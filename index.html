@@ -793,39 +793,61 @@
   function groundY() {
     return height * 0.82 - ellipse.ry * 0.95;
   }
+  // When sitting, her hip lines up with the bench seat top
+  function seatY() {
+    const bench = ground.benches[0];
+    return bench.y - 95 - ellipse.ry * 0.25;
+  }
 
-  // Place her on the ground initially
-  ellipse.y = groundY();
+  let isSitting = false;
+
+  // Start her seated on the bench
+  ellipse.x = ground.benches[0].x;
+  isSitting = true;
+  ellipse.y = seatY();
 
   function step() {
     const dx = ellipse.x - mouse.x;
     const dy = ellipse.y - mouse.y;
     const dist = Math.hypot(dx, dy);
+    const scared = dist < FEAR_RADIUS;
+    const bench = ground.benches[0];
 
-    // Fear only pushes horizontally — she's walking on the ground
-    if (dist < FEAR_RADIUS && dist > 0.001) {
-      const strength = (1 - dist / FEAR_RADIUS) * 2.5;
-      ellipse.vx += (dx / dist) * strength;
+    if (scared) {
+      // Stand up and flee
+      isSitting = false;
+      if (dist > 0.001) {
+        const strength = (1 - dist / FEAR_RADIUS) * 2.5;
+        ellipse.vx += (dx / dist) * strength;
+      }
+    } else if (isSitting) {
+      // Stay seated, kill any drift
+      ellipse.vx *= 0.4;
+    } else {
+      // Stroll toward the bench; sit down when close enough
+      const offset = ellipse.x - bench.x;
+      if (Math.abs(offset) < 4) {
+        isSitting = true;
+        ellipse.x = bench.x;
+        ellipse.vx = 0;
+      } else {
+        ellipse.vx += -Math.sign(offset) * 0.25;
+      }
     }
 
-    // gentle horizontal pull back toward center
-    ellipse.vx += (width / 2 - ellipse.x) * 0.0008;
-
     ellipse.vx *= FRICTION;
-
     if (Math.abs(ellipse.vx) > MAX_SPEED) {
       ellipse.vx = Math.sign(ellipse.vx) * MAX_SPEED;
     }
-
     ellipse.x += ellipse.vx;
 
-    // bounce off left/right walls
-    if (ellipse.x < ellipse.rx) { ellipse.x = ellipse.rx; ellipse.vx *= -0.6; }
-    if (ellipse.x > width - ellipse.rx) { ellipse.x = width - ellipse.rx; ellipse.vx *= -0.6; }
+    // bounce off left/right walls; if you bounce, you're no longer seated
+    if (ellipse.x < ellipse.rx) { ellipse.x = ellipse.rx; ellipse.vx *= -0.6; isSitting = false; }
+    if (ellipse.x > width - ellipse.rx) { ellipse.x = width - ellipse.rx; ellipse.vx *= -0.6; isSitting = false; }
 
-    // Lock to ground
+    // Vertical lock (ground or bench seat)
     ellipse.vy = 0;
-    ellipse.y = groundY();
+    ellipse.y = isSitting ? seatY() : groundY();
 
     draw(dist);
     requestAnimationFrame(step);
@@ -861,8 +883,10 @@
 
     // Run animation phase — faster cycle when scared
     const speed = Math.hypot(ellipse.vx, ellipse.vy);
-    const phase = Date.now() / (scared ? 70 : 350);
-    const swing = Math.sin(phase) * (scared ? 0.55 : 0.1);
+    const speedAbs = Math.abs(ellipse.vx);
+    const walking = !isSitting && !scared && speedAbs > 0.4;
+    const phase = Date.now() / (scared ? 70 : walking ? 160 : 400);
+    const swing = Math.sin(phase) * (scared ? 0.55 : walking ? 0.25 : 0.1);
 
     // Direction she's running (for leaning)
     const moveDir = speed > 0.5 ? Math.atan2(ellipse.vy, ellipse.vx) : 0;
@@ -889,29 +913,60 @@
     ctx.strokeStyle = SKIN;
     ctx.lineWidth = 11;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
-    const legSwing = Math.sin(phase) * (scared ? 14 : 2);
-    const leftFootX = cx - 12 + legSwing;
-    const rightFootX = cx + 12 - legSwing;
+    if (isSitting) {
+      // Knees and feet together — modest seated pose
+      const groundLevel = height * 0.82;
+      const kneeY_sit = hipY + 10;
+      const kneeX_L = cx - 7;
+      const kneeX_R = cx + 7;
 
-    ctx.beginPath();
-    ctx.moveTo(cx - 12, hipY);
-    ctx.quadraticCurveTo(cx - 14, kneeY, leftFootX, footY);
-    ctx.stroke();
+      // Thighs angle inward from hips to knees, then calves drop straight down
+      ctx.beginPath();
+      ctx.moveTo(cx - 12, hipY);
+      ctx.lineTo(kneeX_L, kneeY_sit);
+      ctx.lineTo(kneeX_L, groundLevel);
+      ctx.stroke();
 
-    ctx.beginPath();
-    ctx.moveTo(cx + 12, hipY);
-    ctx.quadraticCurveTo(cx + 14, kneeY, rightFootX, footY);
-    ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx + 12, hipY);
+      ctx.lineTo(kneeX_R, kneeY_sit);
+      ctx.lineTo(kneeX_R, groundLevel);
+      ctx.stroke();
 
-    // Shoes
-    ctx.fillStyle = '#7c2d12';
-    ctx.beginPath();
-    ctx.ellipse(leftFootX, footY + 2, 10, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(rightFootX, footY + 2, 10, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
+      // Shoes — side by side, pointing forward
+      ctx.fillStyle = '#7c2d12';
+      ctx.beginPath();
+      ctx.ellipse(kneeX_L - 1, groundLevel + 2, 10, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(kneeX_R + 1, groundLevel + 2, 10, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Standing / running
+      const legSwing = Math.sin(phase) * (scared ? 14 : walking ? 7 : 2);
+      const leftFootX = cx - 12 + legSwing;
+      const rightFootX = cx + 12 - legSwing;
+
+      ctx.beginPath();
+      ctx.moveTo(cx - 12, hipY);
+      ctx.quadraticCurveTo(cx - 14, kneeY, leftFootX, footY);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(cx + 12, hipY);
+      ctx.quadraticCurveTo(cx + 14, kneeY, rightFootX, footY);
+      ctx.stroke();
+
+      ctx.fillStyle = '#7c2d12';
+      ctx.beginPath();
+      ctx.ellipse(leftFootX, footY + 2, 10, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(rightFootX, footY + 2, 10, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // ---- Dress (skirt) ----
     const skirtTopY = waistY;
@@ -957,34 +1012,54 @@
     ctx.lineWidth = 9;
     ctx.lineCap = 'round';
 
-    // when scared, arms fly out wider; idle = relaxed at sides
-    const armBase = scared ? Math.PI * 0.55 : Math.PI * 0.5;
-    const armSpread = scared ? 0.5 : 0.15;
-    const armLen = 48;
-
     const lShoulderX = cx - 18;
-    const lArmAngle = armBase + armSpread + swing;
-    const lElbowX = lShoulderX + Math.cos(Math.PI - lArmAngle * 0.6) * armLen * 0.5;
-    const lElbowY = shoulderY + Math.sin(lArmAngle * 0.7) * armLen * 0.5;
-    const lHandX = lShoulderX - Math.sin(lArmAngle) * armLen;
-    const lHandY = shoulderY + Math.cos(lArmAngle) * armLen;
-
-    ctx.beginPath();
-    ctx.moveTo(lShoulderX, shoulderY);
-    ctx.quadraticCurveTo(lElbowX, lElbowY, lHandX, lHandY);
-    ctx.stroke();
-
     const rShoulderX = cx + 18;
-    const rArmAngle = armBase + armSpread - swing;
-    const rElbowX = rShoulderX - Math.cos(Math.PI - rArmAngle * 0.6) * armLen * 0.5;
-    const rElbowY = shoulderY + Math.sin(rArmAngle * 0.7) * armLen * 0.5;
-    const rHandX = rShoulderX + Math.sin(rArmAngle) * armLen;
-    const rHandY = shoulderY + Math.cos(rArmAngle) * armLen;
+    let lHandX, lHandY, rHandX, rHandY;
 
-    ctx.beginPath();
-    ctx.moveTo(rShoulderX, shoulderY);
-    ctx.quadraticCurveTo(rElbowX, rElbowY, rHandX, rHandY);
-    ctx.stroke();
+    if (isSitting) {
+      // Hands rest on lap, arms relaxed
+      lHandX = cx - 16;
+      lHandY = hipY + 4;
+      rHandX = cx + 16;
+      rHandY = hipY + 4;
+
+      ctx.beginPath();
+      ctx.moveTo(lShoulderX, shoulderY);
+      ctx.quadraticCurveTo(lShoulderX - 8, shoulderY + 22, lHandX, lHandY);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(rShoulderX, shoulderY);
+      ctx.quadraticCurveTo(rShoulderX + 8, shoulderY + 22, rHandX, rHandY);
+      ctx.stroke();
+    } else {
+      // when scared, arms fly out wider; idle = relaxed at sides
+      const armBase = scared ? Math.PI * 0.55 : Math.PI * 0.5;
+      const armSpread = scared ? 0.5 : 0.15;
+      const armLen = 48;
+
+      const lArmAngle = armBase + armSpread + swing;
+      const lElbowX = lShoulderX + Math.cos(Math.PI - lArmAngle * 0.6) * armLen * 0.5;
+      const lElbowY = shoulderY + Math.sin(lArmAngle * 0.7) * armLen * 0.5;
+      lHandX = lShoulderX - Math.sin(lArmAngle) * armLen;
+      lHandY = shoulderY + Math.cos(lArmAngle) * armLen;
+
+      ctx.beginPath();
+      ctx.moveTo(lShoulderX, shoulderY);
+      ctx.quadraticCurveTo(lElbowX, lElbowY, lHandX, lHandY);
+      ctx.stroke();
+
+      const rArmAngle = armBase + armSpread - swing;
+      const rElbowX = rShoulderX - Math.cos(Math.PI - rArmAngle * 0.6) * armLen * 0.5;
+      const rElbowY = shoulderY + Math.sin(rArmAngle * 0.7) * armLen * 0.5;
+      rHandX = rShoulderX + Math.sin(rArmAngle) * armLen;
+      rHandY = shoulderY + Math.cos(rArmAngle) * armLen;
+
+      ctx.beginPath();
+      ctx.moveTo(rShoulderX, shoulderY);
+      ctx.quadraticCurveTo(rElbowX, rElbowY, rHandX, rHandY);
+      ctx.stroke();
+    }
 
     // Hands
     ctx.fillStyle = SKIN_LIGHT;
