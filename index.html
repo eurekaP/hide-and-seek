@@ -355,6 +355,22 @@
   spawnStars();
   spawnGround();
 
+  // -------- Wardrobe (a different dress color each day) --------
+  const DRESS_PALETTE = [
+    { normal: '#f472b6', dark: '#db2777', scared: '#fb7185', scaredDark: '#e11d48', bow: '#ec4899' }, // pink
+    { normal: '#fbbf24', dark: '#d97706', scared: '#fcd34d', scaredDark: '#b45309', bow: '#f59e0b' }, // sunflower
+    { normal: '#34d399', dark: '#059669', scared: '#6ee7b7', scaredDark: '#047857', bow: '#10b981' }, // mint
+    { normal: '#a78bfa', dark: '#7c3aed', scared: '#c4b5fd', scaredDark: '#6d28d9', bow: '#8b5cf6' }, // lavender
+    { normal: '#60a5fa', dark: '#2563eb', scared: '#93c5fd', scaredDark: '#1d4ed8', bow: '#3b82f6' }, // sky
+    { normal: '#f87171', dark: '#dc2626', scared: '#fca5a5', scaredDark: '#b91c1c', bow: '#ef4444' }, // coral
+    { normal: '#fb923c', dark: '#ea580c', scared: '#fdba74', scaredDark: '#c2410c', bow: '#f97316' }, // tangerine
+  ];
+  function currentDress() {
+    const elapsed = (performance.now() - startTime) / 1000;
+    const day = Math.floor(elapsed / CYCLE_SECONDS + 0.35);
+    return DRESS_PALETTE[((day % DRESS_PALETTE.length) + DRESS_PALETTE.length) % DRESS_PALETTE.length];
+  }
+
   // -------- Weather --------
   let weather = 'sunny';
   let lightningEnd = 0;
@@ -895,8 +911,10 @@
     const SKIN = '#f4c2a1';
     const SKIN_LIGHT = '#ffe4d6';
     const HAIR = '#3b1f17';
-    const DRESS = scared ? '#fb7185' : '#f472b6';
-    const DRESS_DARK = scared ? '#e11d48' : '#db2777';
+    const dressDef = currentDress();
+    const DRESS = scared ? dressDef.scared : dressDef.normal;
+    const DRESS_DARK = scared ? dressDef.scaredDark : dressDef.dark;
+    const BOW = scared ? dressDef.scared : dressDef.bow;
 
     // ---- Back hair (drawn first so body/arms/neck appear in front) ----
     ctx.fillStyle = HAIR;
@@ -1098,7 +1116,7 @@
     // Side bow
     const bowX = cx + headR * 0.85;
     const bowY = headY - headR * 0.55;
-    ctx.fillStyle = scared ? '#fb7185' : '#ec4899';
+    ctx.fillStyle = BOW;
     ctx.beginPath();
     ctx.ellipse(bowX - 8, bowY, 10, 7, -0.4, 0, Math.PI * 2);
     ctx.fill();
