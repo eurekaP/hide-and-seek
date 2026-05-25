@@ -1036,9 +1036,9 @@
     const SKIN_LIGHT = '#ffe4d6';
     const HAIR = '#3b1f17';
     const dressDef = currentDress();
-    const DRESS = scared ? dressDef.scared : dressDef.normal;
-    const DRESS_DARK = scared ? dressDef.scaredDark : dressDef.dark;
-    const BOW = scared ? dressDef.scared : dressDef.bow;
+    const DRESS = dressDef.normal;
+    const DRESS_DARK = dressDef.dark;
+    const BOW = dressDef.bow;
 
     // ---- Back hair (drawn first so body/arms/neck appear in front) ----
     ctx.fillStyle = HAIR;
