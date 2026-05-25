@@ -113,6 +113,28 @@
 
   // -------- Evolution state --------
   let mode = 'normal'; // 'normal' | 'angel'
+  let _prevDayT = 0.35; // previous frame's day cycle t (matches the offset used in dayIndex)
+  const SUNSET_T = 0.78;
+  const SUNRISE_T = 0.22;
+
+  function checkDayNightTransition() {
+    const elapsed = (performance.now() - startTime) / 1000;
+    const t = ((elapsed / CYCLE_SECONDS) + 0.35) % 1;
+    const crossedSunset  = _prevDayT < SUNSET_T  && t >= SUNSET_T;
+    const crossedSunrise = _prevDayT < SUNRISE_T && t >= SUNRISE_T;
+    if ((crossedSunset || crossedSunrise) && mode === 'angel') {
+      mode = 'normal';
+      isSitting = false;
+      floatingMessages.push({
+        text: crossedSunrise ? '🌅 Mortal again' : '🌇 Mortal again',
+        x: ellipse.x,
+        y: ellipse.y - ellipse.ry - 18,
+        born: performance.now(),
+        duration: 2200,
+      });
+    }
+    _prevDayT = t;
+  }
 
   // -------- Floating catch messages --------
   const CATCH_MESSAGES = ['Gotcha!', 'Found you!', 'Tag!', 'Caught ya!', 'Boop!', "Got 'em!"];
@@ -1389,6 +1411,7 @@
   ellipse.y = seatY();
 
   function step() {
+    checkDayNightTransition();
     const dx = ellipse.x - mouse.x;
     const dy = ellipse.y - mouse.y;
     const dist = Math.hypot(dx, dy);
