@@ -393,6 +393,70 @@
   let weather = 'sunny';
   let lightningEnd = 0;
   let lightningNext = 0;
+  let lightningStart = 0;
+  let lightningBolt = null; // { main: [{x,y}], branches: [[{x,y}]] }
+
+  function generateBolt() {
+    const segs = 8 + Math.floor(Math.random() * 5);
+    const startX = width * (0.15 + Math.random() * 0.7);
+    const startY = 20 + Math.random() * 80;
+    const endY = height * (0.7 + Math.random() * 0.1);
+    const main = [{ x: startX, y: startY }];
+    let x = startX;
+    for (let i = 1; i <= segs; i++) {
+      const y = startY + (endY - startY) * (i / segs);
+      x += (Math.random() - 0.5) * 70;
+      main.push({ x, y });
+    }
+    const branches = [];
+    const branchCount = 1 + Math.floor(Math.random() * 3);
+    for (let b = 0; b < branchCount; b++) {
+      const idx = 1 + Math.floor(Math.random() * (main.length - 2));
+      const root = main[idx];
+      const segs2 = 3 + Math.floor(Math.random() * 4);
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      const pts = [root];
+      let bx = root.x, by = root.y;
+      for (let i = 1; i <= segs2; i++) {
+        bx += dir * (12 + Math.random() * 28);
+        by += 18 + Math.random() * 40;
+        pts.push({ x: bx, y: by });
+      }
+      branches.push(pts);
+    }
+    return { main, branches };
+  }
+
+  function strokePolyline(pts, color, width) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    for (let i = 0; i < pts.length; i++) {
+      if (i === 0) ctx.moveTo(pts[i].x, pts[i].y);
+      else ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.stroke();
+  }
+
+  function drawLightningBolt(bolt, alpha) {
+    // Outer glow halo (wide, soft, pale blue)
+    strokePolyline(bolt.main, `rgba(180, 210, 255, ${alpha * 0.35})`, 14);
+    for (const br of bolt.branches) {
+      strokePolyline(br, `rgba(180, 210, 255, ${alpha * 0.25})`, 8);
+    }
+    // Middle layer (tighter glow)
+    strokePolyline(bolt.main, `rgba(220, 235, 255, ${alpha * 0.6})`, 6);
+    for (const br of bolt.branches) {
+      strokePolyline(br, `rgba(220, 235, 255, ${alpha * 0.5})`, 3);
+    }
+    // Bright core (thin, almost white)
+    strokePolyline(bolt.main, `rgba(255, 255, 250, ${alpha})`, 2);
+    for (const br of bolt.branches) {
+      strokePolyline(br, `rgba(255, 255, 245, ${alpha * 0.9})`, 1.2);
+    }
+  }
   let snowDepth = 0;   // 0..1 white blanket / bench caps
   let wetness = 0;     // 0..1 puddle accumulation rate
   const puddles = [];  // {x, y, size, alpha, targetAlpha}
@@ -599,16 +663,37 @@
       }
     }
 
-    // Lightning (stormy)
+    // Lightning (stormy) — zigzag bolt + glow + screen flash, with a brief flicker
     if (weather === 'stormy') {
       if (now > lightningNext) {
-        lightningEnd = now + 100 + Math.random() * 180;
-        lightningNext = now + 1500 + Math.random() * 4000;
+        lightningStart = now;
+        lightningEnd = now + 320 + Math.random() * 180;
+        lightningNext = now + 2000 + Math.random() * 4500;
+        lightningBolt = generateBolt();
       }
-      if (now < lightningEnd) {
-        const a = Math.min(0.75, (lightningEnd - now) / 180);
-        ctx.fillStyle = `rgba(255, 255, 240, ${a})`;
+      if (now < lightningEnd && lightningBolt) {
+        const total = lightningEnd - lightningStart;
+        const elapsed = now - lightningStart;
+        const t = elapsed / total; // 0..1
+        // Quick attack, slow decay — peak alpha at t≈0.1, fades to 0
+        let envelope;
+        if (t < 0.1) {
+          envelope = t / 0.1;
+        } else {
+          envelope = Math.pow(1 - (t - 0.1) / 0.9, 1.8);
+        }
+        // Flicker: a couple of sub-strobes during the decay
+        const flicker = 0.7 + 0.3 * Math.abs(Math.sin(elapsed * 0.06));
+        const a = Math.max(0, Math.min(1, envelope * flicker));
+
+        // Screen flash (cooler-tinted than before so it reads as lightning)
+        ctx.fillStyle = `rgba(235, 240, 255, ${a * 0.55})`;
         ctx.fillRect(0, 0, width, height);
+
+        // Bolt on top of the flash
+        drawLightningBolt(lightningBolt, a);
+      } else if (now >= lightningEnd) {
+        lightningBolt = null;
       }
     }
 
