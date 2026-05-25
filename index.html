@@ -112,25 +112,43 @@
   });
 
   // -------- Evolution state --------
-  let mode = 'normal'; // 'normal' | 'angel'
+  let mode = 'normal'; // 'normal' | 'angel' | 'vampire'
   let _prevDayT = 0.35; // previous frame's day cycle t (matches the offset used in dayIndex)
+  let teleportCooldown = 0;  // timestamp until next teleport allowed
+  const poofs = [];          // {x, y, born, duration} — vampire teleport puffs
   const SUNSET_T = 0.78;
   const SUNRISE_T = 0.22;
 
-  function checkDayNightTransition() {
+  function currentDayT() {
     const elapsed = (performance.now() - startTime) / 1000;
-    const t = ((elapsed / CYCLE_SECONDS) + 0.35) % 1;
+    return ((elapsed / CYCLE_SECONDS) + 0.35) % 1;
+  }
+  function isNight() {
+    const t = currentDayT();
+    return t < SUNRISE_T || t > SUNSET_T;
+  }
+
+  function checkDayNightTransition() {
+    const t = currentDayT();
     const crossedSunset  = _prevDayT < SUNSET_T  && t >= SUNSET_T;
     const crossedSunrise = _prevDayT < SUNRISE_T && t >= SUNRISE_T;
-    if ((crossedSunset || crossedSunrise) && mode === 'angel') {
+    // Angel mode ends at sunset (day is over); vampire mode ends at sunrise (night is over).
+    if (crossedSunset && mode === 'angel') {
       mode = 'normal';
       isSitting = false;
       floatingMessages.push({
-        text: crossedSunrise ? '🌅 Mortal again' : '🌇 Mortal again',
-        x: ellipse.x,
-        y: ellipse.y - ellipse.ry - 18,
-        born: performance.now(),
-        duration: 2200,
+        text: '🌇 Day fades…',
+        x: ellipse.x, y: ellipse.y - ellipse.ry - 18,
+        born: performance.now(), duration: 2200,
+      });
+    }
+    if (crossedSunrise && mode === 'vampire') {
+      mode = 'normal';
+      isSitting = false;
+      floatingMessages.push({
+        text: '🌅 Dawn breaks…',
+        x: ellipse.x, y: ellipse.y - ellipse.ry - 18,
+        born: performance.now(), duration: 2200,
       });
     }
     _prevDayT = t;
@@ -145,11 +163,12 @@
     const dy = (e.clientY - ellipse.y) / ellipse.ry;
     if (dx * dx + dy * dy <= 1) {
       if (mode === 'normal') {
-        // First hit — evolve into angel mode
-        mode = 'angel';
+        // Evolve — angel during day, vampire at night
+        const night = isNight();
+        mode = night ? 'vampire' : 'angel';
         isSitting = false;
         floatingMessages.push({
-          text: '✨ Angel mode! ✨',
+          text: night ? '🦇 Vampire mode 🦇' : '✨ Angel mode! ✨',
           x: ellipse.x,
           y: ellipse.y - ellipse.ry - 18,
           born: performance.now(),
@@ -435,6 +454,102 @@
     }
 
     ctx.restore();
+  }
+
+  function drawBatWing(cx, anchorY, side, flapPhase) {
+    const baseX = cx + side * 12;
+    const baseY = anchorY - 4;
+    const flap = flapPhase * 5;
+
+    const membrane     = '#2a1626';
+    const membraneDark = '#150a18';
+    const membraneEdge = '#3d2640';
+
+    ctx.save();
+
+    // Main bat membrane — pointed thumb claw at top, scalloped lower edge
+    ctx.fillStyle = membrane;
+    ctx.beginPath();
+    ctx.moveTo(baseX, baseY);
+    // Upper edge sweeping out and up
+    ctx.quadraticCurveTo(
+      baseX + side * 22, baseY - 28 + flap,
+      baseX + side * 50, baseY - 30 + flap
+    );
+    // Pointed claw at the upper tip
+    ctx.lineTo(baseX + side * 60, baseY - 38 + flap);
+    ctx.lineTo(baseX + side * 56, baseY - 24 + flap);
+    // Outer wing tip
+    ctx.lineTo(baseX + side * 70, baseY - 8 + flap * 0.5);
+    // Scalloped lower edge — series of pointed dips between fingers
+    const scallops = 4;
+    const tipX = baseX + side * 70;
+    const tipY = baseY - 8 + flap * 0.5;
+    const innerX = baseX + side * 4;
+    const innerY = baseY + 6;
+    for (let i = 1; i <= scallops; i++) {
+      const t = i / scallops;
+      const endX = tipX + (innerX - tipX) * t;
+      const endY = tipY + (innerY - tipY) * t;
+      const prevT = (i - 1) / scallops;
+      const startX = tipX + (innerX - tipX) * prevT;
+      const startY = tipY + (innerY - tipY) * prevT;
+      const midX = (startX + endX) / 2;
+      const midY = (startY + endY) / 2 + 9; // dip outward (downward)
+      ctx.quadraticCurveTo(midX, midY, endX, endY);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    // Finger ribs — radial dark lines from base to each scallop boundary
+    ctx.strokeStyle = membraneDark;
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    for (let i = 1; i < scallops; i++) {
+      const t = i / scallops;
+      const ex = tipX + (innerX - tipX) * t;
+      const ey = tipY + (innerY - tipY) * t;
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+    }
+    // Top "thumb" rib to the upper claw
+    ctx.beginPath();
+    ctx.moveTo(baseX, baseY);
+    ctx.lineTo(baseX + side * 60, baseY - 38 + flap);
+    ctx.stroke();
+
+    // Subtle highlight along the upper edge
+    ctx.strokeStyle = membraneEdge;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(baseX + side * 5, baseY - 4);
+    ctx.quadraticCurveTo(
+      baseX + side * 25, baseY - 24 + flap,
+      baseX + side * 48, baseY - 26 + flap
+    );
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawPoof(p, now) {
+    const elapsed = now - p.born;
+    if (elapsed >= p.duration) return false;
+    const t = elapsed / p.duration; // 0..1
+    const radius = 6 + t * 32;
+    const alpha = (1 - t) * 0.7;
+    // Layered dark purple smoke
+    ctx.fillStyle = `rgba(120, 50, 110, ${alpha * 0.55})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(60, 20, 70, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    return true;
   }
 
   function drawUmbrella(b, brightness) {
@@ -1419,8 +1534,44 @@
     const bench = ground.benches[0];
     const wet = weather === 'rainy' || weather === 'stormy';
     const canFly = mode === 'angel' && !wet;
+    const canTeleport = mode === 'vampire';
 
-    if (canFly) {
+    if (canTeleport) {
+      // ---- Vampire: teleport away when threatened ----
+      isSitting = false;
+      const now = performance.now();
+      if (scared && now > teleportCooldown) {
+        // Pick a random spot well away from the cursor and inside the sky
+        const skyFloor = height * 0.82 - ellipse.ry * 0.5;
+        let nx, ny;
+        for (let attempt = 0; attempt < 12; attempt++) {
+          nx = ellipse.rx + Math.random() * (width - 2 * ellipse.rx);
+          ny = ellipse.ry + Math.random() * (skyFloor - ellipse.ry);
+          if (Math.hypot(nx - mouse.x, ny - mouse.y) > FEAR_RADIUS * 1.4) break;
+        }
+        // Spawn poofs at old and new positions
+        poofs.push({ x: ellipse.x, y: ellipse.y, born: now, duration: 450 });
+        poofs.push({ x: nx,         y: ny,         born: now, duration: 450 });
+        ellipse.x = nx;
+        ellipse.y = ny;
+        ellipse.vx = 0;
+        ellipse.vy = 0;
+        teleportCooldown = now + 450;
+      } else {
+        // Subtle hover when not threatened
+        ellipse.vy += Math.sin(now / 700) * 0.07;
+        ellipse.vx *= FRICTION;
+        ellipse.vy *= FRICTION;
+        ellipse.x += ellipse.vx;
+        ellipse.y += ellipse.vy;
+      }
+      // Soft clamp inside the canvas
+      const skyFloor = height * 0.82 - ellipse.ry * 0.5;
+      if (ellipse.x < ellipse.rx)         { ellipse.x = ellipse.rx;         ellipse.vx = 0; }
+      if (ellipse.x > width - ellipse.rx) { ellipse.x = width - ellipse.rx; ellipse.vx = 0; }
+      if (ellipse.y < ellipse.ry)         { ellipse.y = ellipse.ry;         ellipse.vy = 0; }
+      if (ellipse.y > skyFloor)           { ellipse.y = skyFloor;           ellipse.vy = 0; }
+    } else if (canFly) {
       // ---- Angel flying: free 2D movement ----
       isSitting = false;
       if (scared && dist > 0.001) {
@@ -1558,12 +1709,16 @@
     ctx.closePath();
     ctx.fill();
 
-    // ---- Angel wings (only in angel mode; behind body but in front of back hair) ----
+    // ---- Wings (behind body, in front of back hair) ----
     if (mode === 'angel') {
       const wet = weather === 'rainy' || weather === 'stormy';
       const flapPhase = Math.sin(performance.now() / 220);
       drawWing(cx, shoulderY, -1, wet, flapPhase);
       drawWing(cx, shoulderY,  1, wet, flapPhase);
+    } else if (mode === 'vampire') {
+      const flapPhase = Math.sin(performance.now() / 180);
+      drawBatWing(cx, shoulderY, -1, flapPhase);
+      drawBatWing(cx, shoulderY,  1, flapPhase);
     }
 
     // ---- Leg path coords (shared between skin legs, pants overlay, and shoes) ----
@@ -2225,6 +2380,11 @@
 
     // Weather particles drawn last so they cover everything
     drawWeather(now, dt);
+
+    // Vampire teleport poofs
+    for (let i = poofs.length - 1; i >= 0; i--) {
+      if (!drawPoof(poofs[i], now)) poofs.splice(i, 1);
+    }
 
     // Floating catch messages on top of everything
     drawFloatingMessages(now);
