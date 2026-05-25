@@ -1694,8 +1694,9 @@
       }
 
       case 'gown': {
-        // Floor-length straight gown reaching just above the feet
-        const hem = groundLevel - 6;
+        // Floor-length straight gown — sitting collapses footY past the ground,
+        // so clamp the hem to the actual ground level when seated.
+        const hem = (isSitting ? groundLevel : footY) - 4;
         const top = waistY;
         ctx.fillStyle = DRESS;
         ctx.beginPath();
