@@ -111,6 +111,9 @@
     mouse.y = -9999;
   });
 
+  // -------- Evolution state --------
+  let mode = 'normal'; // 'normal' | 'angel'
+
   // -------- Floating catch messages --------
   const CATCH_MESSAGES = ['Gotcha!', 'Found you!', 'Tag!', 'Caught ya!', 'Boop!', "Got 'em!"];
   const floatingMessages = []; // {text, x, y, born, duration}
@@ -119,14 +122,27 @@
     const dx = (e.clientX - ellipse.x) / ellipse.rx;
     const dy = (e.clientY - ellipse.y) / ellipse.ry;
     if (dx * dx + dy * dy <= 1) {
-      const text = CATCH_MESSAGES[Math.floor(Math.random() * CATCH_MESSAGES.length)];
-      floatingMessages.push({
-        text,
-        x: ellipse.x,
-        y: ellipse.y - ellipse.ry - 18,
-        born: performance.now(),
-        duration: 1500,
-      });
+      if (mode === 'normal') {
+        // First hit — evolve into angel mode
+        mode = 'angel';
+        isSitting = false;
+        floatingMessages.push({
+          text: '✨ Angel mode! ✨',
+          x: ellipse.x,
+          y: ellipse.y - ellipse.ry - 18,
+          born: performance.now(),
+          duration: 2200,
+        });
+      } else {
+        const text = CATCH_MESSAGES[Math.floor(Math.random() * CATCH_MESSAGES.length)];
+        floatingMessages.push({
+          text,
+          x: ellipse.x,
+          y: ellipse.y - ellipse.ry - 18,
+          born: performance.now(),
+          duration: 1500,
+        });
+      }
     }
   });
 
@@ -284,6 +300,119 @@
 
     // Bench — fixed at ~22% from left, sitting on horizon
     ground.benches.push({ x: width * 0.22, y: horizon });
+  }
+
+  function drawWing(cx, anchorY, side, wet, flapPhase) {
+    const baseX = cx + side * 14;
+    const baseY = anchorY - 4;
+    // Slight flap motion when flying (not wet)
+    const flap = wet ? 0 : flapPhase * 6;
+
+    const featherLight = wet ? '#9aa3b1' : '#fbfcfe';
+    const featherMid   = wet ? '#7d8694' : '#e6ebf2';
+    const featherEdge  = wet ? '#5e6776' : '#c8cfd9';
+
+    ctx.save();
+
+    if (wet) {
+      // Sagging, drooping wet wing
+      ctx.fillStyle = featherLight;
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.bezierCurveTo(
+        baseX + side * 26, baseY + 6,
+        baseX + side * 30, baseY + 38,
+        baseX + side * 22, baseY + 62
+      );
+      ctx.quadraticCurveTo(baseX + side * 14, baseY + 58, baseX + side * 16, baseY + 46);
+      ctx.bezierCurveTo(
+        baseX + side * 8,  baseY + 28,
+        baseX + side * 2,  baseY + 12,
+        baseX, baseY
+      );
+      ctx.closePath();
+      ctx.fill();
+
+      // Inner shadow
+      ctx.fillStyle = featherMid;
+      ctx.beginPath();
+      ctx.moveTo(baseX + side * 4, baseY + 4);
+      ctx.bezierCurveTo(
+        baseX + side * 14, baseY + 18,
+        baseX + side * 18, baseY + 40,
+        baseX + side * 14, baseY + 52
+      );
+      ctx.quadraticCurveTo(baseX + side * 8, baseY + 36, baseX + side * 4, baseY + 4);
+      ctx.closePath();
+      ctx.fill();
+
+      // Drip
+      ctx.fillStyle = 'rgba(120, 150, 180, 0.7)';
+      ctx.beginPath();
+      ctx.arc(baseX + side * 22, baseY + 66, 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Spread wing — angled outward and upward
+      // Outer wing layer
+      ctx.fillStyle = featherLight;
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.bezierCurveTo(
+        baseX + side * 32, baseY - 38 + flap,
+        baseX + side * 64, baseY - 30 + flap,
+        baseX + side * 76, baseY - 8 + flap * 0.5
+      );
+      ctx.quadraticCurveTo(
+        baseX + side * 62, baseY + 14,
+        baseX + side * 30, baseY + 12
+      );
+      ctx.quadraticCurveTo(
+        baseX + side * 14, baseY + 4,
+        baseX, baseY
+      );
+      ctx.closePath();
+      ctx.fill();
+
+      // Inner feather row (slightly darker for depth)
+      ctx.fillStyle = featherMid;
+      ctx.beginPath();
+      ctx.moveTo(baseX + side * 6, baseY + 2);
+      ctx.bezierCurveTo(
+        baseX + side * 28, baseY - 18 + flap * 0.7,
+        baseX + side * 50, baseY - 14 + flap * 0.7,
+        baseX + side * 58, baseY + 2
+      );
+      ctx.quadraticCurveTo(
+        baseX + side * 42, baseY + 10,
+        baseX + side * 22, baseY + 8
+      );
+      ctx.quadraticCurveTo(
+        baseX + side * 12, baseY + 4,
+        baseX + side * 6, baseY + 2
+      );
+      ctx.closePath();
+      ctx.fill();
+
+      // Radial feather lines for texture
+      ctx.strokeStyle = featherEdge;
+      ctx.lineWidth = 0.8;
+      ctx.lineCap = 'round';
+      const featherCount = 6;
+      for (let i = 0; i < featherCount; i++) {
+        const t = (i + 0.5) / featherCount;
+        // Elevation angle from horizontal: 0 (outward) -> ~Math.PI/2 (up)
+        const theta = 0.1 + 1.05 * t;
+        const len = 70 - i * 5;
+        const ex = baseX + side * Math.cos(theta) * len;
+        const ey = baseY - Math.sin(theta) * len + flap * (1 - t * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(baseX, baseY);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
   }
 
   function drawUmbrella(b, brightness) {
@@ -1265,42 +1394,72 @@
     const dist = Math.hypot(dx, dy);
     const scared = dist < FEAR_RADIUS;
     const bench = ground.benches[0];
+    const wet = weather === 'rainy' || weather === 'stormy';
+    const canFly = mode === 'angel' && !wet;
 
-    if (scared) {
-      // Stand up and flee
+    if (canFly) {
+      // ---- Angel flying: free 2D movement ----
       isSitting = false;
-      if (dist > 0.001) {
+      if (scared && dist > 0.001) {
         const strength = (1 - dist / FEAR_RADIUS) * 2.5;
         ellipse.vx += (dx / dist) * strength;
-      }
-    } else if (isSitting) {
-      // Stay seated, kill any drift
-      ellipse.vx *= 0.4;
-    } else {
-      // Stroll toward the bench; sit down when close enough
-      const offset = ellipse.x - bench.x;
-      if (Math.abs(offset) < 4) {
-        isSitting = true;
-        ellipse.x = bench.x;
-        ellipse.vx = 0;
+        ellipse.vy += (dy / dist) * strength;
       } else {
-        ellipse.vx += -Math.sign(offset) * 0.25;
+        // Gentle hover bob when not chased
+        ellipse.vy += Math.sin(performance.now() / 600) * 0.08;
       }
+
+      ellipse.vx *= FRICTION;
+      ellipse.vy *= FRICTION;
+
+      const speed = Math.hypot(ellipse.vx, ellipse.vy);
+      if (speed > MAX_SPEED) {
+        ellipse.vx = (ellipse.vx / speed) * MAX_SPEED;
+        ellipse.vy = (ellipse.vy / speed) * MAX_SPEED;
+      }
+
+      ellipse.x += ellipse.vx;
+      ellipse.y += ellipse.vy;
+
+      // Bounce off all four sides (top, bottom-of-sky, left, right)
+      const skyFloor = height * 0.82 - ellipse.ry * 0.5; // can't fly through the ground
+      if (ellipse.x < ellipse.rx)         { ellipse.x = ellipse.rx;         ellipse.vx *= -0.6; }
+      if (ellipse.x > width - ellipse.rx) { ellipse.x = width - ellipse.rx; ellipse.vx *= -0.6; }
+      if (ellipse.y < ellipse.ry)         { ellipse.y = ellipse.ry;         ellipse.vy *= -0.6; }
+      if (ellipse.y > skyFloor)           { ellipse.y = skyFloor;           ellipse.vy *= -0.6; }
+    } else {
+      // ---- Grounded behavior (normal mode, or angel with wet wings) ----
+      if (scared) {
+        isSitting = false;
+        if (dist > 0.001) {
+          const strength = (1 - dist / FEAR_RADIUS) * 2.5;
+          ellipse.vx += (dx / dist) * strength;
+        }
+      } else if (isSitting) {
+        ellipse.vx *= 0.4;
+      } else {
+        const offset = ellipse.x - bench.x;
+        if (Math.abs(offset) < 4) {
+          isSitting = true;
+          ellipse.x = bench.x;
+          ellipse.vx = 0;
+        } else {
+          ellipse.vx += -Math.sign(offset) * 0.25;
+        }
+      }
+
+      ellipse.vx *= FRICTION;
+      if (Math.abs(ellipse.vx) > MAX_SPEED) {
+        ellipse.vx = Math.sign(ellipse.vx) * MAX_SPEED;
+      }
+      ellipse.x += ellipse.vx;
+
+      if (ellipse.x < ellipse.rx)         { ellipse.x = ellipse.rx;         ellipse.vx *= -0.6; isSitting = false; }
+      if (ellipse.x > width - ellipse.rx) { ellipse.x = width - ellipse.rx; ellipse.vx *= -0.6; isSitting = false; }
+
+      ellipse.vy = 0;
+      ellipse.y = isSitting ? seatY() : groundY();
     }
-
-    ellipse.vx *= FRICTION;
-    if (Math.abs(ellipse.vx) > MAX_SPEED) {
-      ellipse.vx = Math.sign(ellipse.vx) * MAX_SPEED;
-    }
-    ellipse.x += ellipse.vx;
-
-    // bounce off left/right walls; if you bounce, you're no longer seated
-    if (ellipse.x < ellipse.rx) { ellipse.x = ellipse.rx; ellipse.vx *= -0.6; isSitting = false; }
-    if (ellipse.x > width - ellipse.rx) { ellipse.x = width - ellipse.rx; ellipse.vx *= -0.6; isSitting = false; }
-
-    // Vertical lock (ground or bench seat)
-    ellipse.vy = 0;
-    ellipse.y = isSitting ? seatY() : groundY();
 
     draw(dist);
     requestAnimationFrame(step);
@@ -1375,6 +1534,14 @@
     );
     ctx.closePath();
     ctx.fill();
+
+    // ---- Angel wings (only in angel mode; behind body but in front of back hair) ----
+    if (mode === 'angel') {
+      const wet = weather === 'rainy' || weather === 'stormy';
+      const flapPhase = Math.sin(performance.now() / 220);
+      drawWing(cx, shoulderY, -1, wet, flapPhase);
+      drawWing(cx, shoulderY,  1, wet, flapPhase);
+    }
 
     // ---- Leg path coords (shared between skin legs, pants overlay, and shoes) ----
     const groundLevel = height * 0.82;
