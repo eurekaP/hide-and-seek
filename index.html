@@ -322,6 +322,155 @@
     ctx.restore();
   }
 
+  function drawFoldedUmbrella(centerX, baseY, lean, brightness) {
+    // A closed parasol leaning upright against the bench backrest.
+    const fabric     = lerpC([30, 50, 110],  [12, 18, 45],  1 - brightness);
+    const fabricDark = lerpC([18, 30, 70],   [6, 10, 25],   1 - brightness);
+    const tie        = lerpC([55, 80, 145],  [22, 32, 60],  1 - brightness);
+    const wood       = lerpC([110, 75, 40],  [45, 28, 15],  1 - brightness);
+    const woodDark   = lerpC([70, 45, 22],   [25, 16, 8],   1 - brightness);
+
+    ctx.save();
+    ctx.translate(centerX, baseY);
+    ctx.rotate(lean);
+
+    const L = 95;          // total length of the closed umbrella
+    const headW = 6;       // half-width at the canopy/head end
+    const tipW = 1.5;      // half-width at the pointy tip
+
+    // Body — tapered shape from head to tip (head at top, tip on the seat going down)
+    // In local coords after rotation: vertical axis with head at top, tip at bottom.
+    ctx.fillStyle = rgb(fabric);
+    ctx.beginPath();
+    ctx.moveTo(-headW, -L);
+    ctx.lineTo( headW, -L);
+    ctx.lineTo( tipW,   0);
+    ctx.lineTo(-tipW,   0);
+    ctx.closePath();
+    ctx.fill();
+
+    // A couple of vertical fold creases for fabric texture
+    ctx.strokeStyle = rgb(fabricDark);
+    ctx.lineWidth = 0.8;
+    for (const k of [-0.4, 0, 0.4]) {
+      const xTop = k * headW;
+      const xBot = k * tipW;
+      ctx.beginPath();
+      ctx.moveTo(xTop, -L + 2);
+      ctx.lineTo(xBot, -2);
+      ctx.stroke();
+    }
+
+    // Tie/band around the upper part (suggests the umbrella is strapped closed)
+    ctx.fillStyle = rgb(tie);
+    ctx.fillRect(-headW - 1, -L * 0.78, headW * 2 + 2, 4);
+
+    // Pointy tip
+    ctx.fillStyle = rgb(woodDark);
+    ctx.beginPath();
+    ctx.moveTo(-tipW, 0);
+    ctx.lineTo(tipW, 0);
+    ctx.lineTo(0, 6);
+    ctx.closePath();
+    ctx.fill();
+
+    // J-hook handle at the top (curves outward to the right relative to local axis)
+    ctx.strokeStyle = rgb(wood);
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, -L);
+    ctx.lineTo(0, -L - 10);
+    ctx.quadraticCurveTo(8, -L - 14, 8, -L - 6);
+    ctx.stroke();
+    // Handle darker side stripe
+    ctx.strokeStyle = rgb(woodDark);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(1, -L);
+    ctx.lineTo(1, -L - 8);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawOpenPortableUmbrella(handX, handY, brightness) {
+    if (weather !== 'rainy' && weather !== 'stormy') return;
+
+    const fabric   = lerpC([30, 50, 130],   [12, 20, 55],  1 - brightness);
+    const fabDark  = lerpC([15, 25, 70],    [5, 8, 25],    1 - brightness);
+    const pole     = lerpC([110, 75, 40],   [45, 28, 15],  1 - brightness);
+    const poleDark = lerpC([70, 45, 22],    [25, 16, 8],   1 - brightness);
+
+    ctx.save();
+    ctx.translate(handX, handY);
+
+    const halfCW = 60;       // canopy half width
+    const eaveY = -55;       // canopy bottom edge above hand
+    const peakY = -100;      // canopy top above hand
+    const panels = 8;
+    const scallopDepth = 7;
+    const poleW = 3;
+
+    // Pole from hand up to the canopy peak
+    ctx.fillStyle = rgb(pole);
+    ctx.fillRect(-poleW / 2, peakY, poleW, 0 - peakY);
+
+    // Curved J-hook handle just below the hand
+    ctx.strokeStyle = rgb(pole);
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, 10);
+    ctx.quadraticCurveTo(8, 14, 8, 6);
+    ctx.stroke();
+
+    // Canopy as 8 flat triangular panels with shading
+    for (let i = 0; i < panels; i++) {
+      const t1 = i / panels;
+      const t2 = (i + 1) / panels;
+      const xL = -halfCW + t1 * 2 * halfCW;
+      const xR = -halfCW + t2 * 2 * halfCW;
+      const tMid = (t1 + t2) / 2;
+      const edgeness = Math.abs(tMid - 0.5) * 2;
+      const shade = 1 - edgeness * 0.30;
+      const c = [
+        Math.floor(fabric[0] * shade),
+        Math.floor(fabric[1] * shade),
+        Math.floor(fabric[2] * shade),
+      ];
+      ctx.fillStyle = rgb(c);
+      ctx.beginPath();
+      ctx.moveTo(0, peakY);
+      ctx.lineTo(xL, eaveY);
+      const midX = (xL + xR) / 2;
+      ctx.quadraticCurveTo(midX, eaveY + scallopDepth, xR, eaveY);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Rib lines
+    ctx.strokeStyle = rgb(fabDark);
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= panels; i++) {
+      const t = i / panels;
+      const x = -halfCW + t * 2 * halfCW;
+      ctx.beginPath();
+      ctx.moveTo(0, peakY);
+      ctx.lineTo(x, eaveY);
+      ctx.stroke();
+    }
+
+    // Finial
+    ctx.fillStyle = rgb(poleDark);
+    ctx.beginPath();
+    ctx.arc(0, peakY - 3, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
   function drawBench(b, brightness) {
     const wood = lerpC([139, 90, 43], [55, 35, 16], 1 - brightness);
     const woodDark = lerpC([92, 51, 23], [35, 22, 10], 1 - brightness);
@@ -791,6 +940,7 @@
   window.addEventListener('resize', () => { spawnClouds(); spawnStars(); spawnGround(); spawnRain(220); spawnSnow(180); });
 
   let lastFrame = performance.now();
+  let currentBrightness = 1; // updated each frame in drawBackground; read by draw() helpers
 
   function drawBackground(now) {
     const elapsed = (now - startTime) / 1000;
@@ -809,6 +959,7 @@
 
     // Stars — fade in with darkness (use top color brightness)
     const brightness = (top[0] + top[1] + top[2]) / (3 * 255);
+    currentBrightness = brightness;
     const starAlpha = Math.max(0, 1 - brightness * 2.5);
     if (starAlpha > 0.01) {
       for (const s of stars) {
@@ -919,6 +1070,9 @@
     for (const b of ground.benches) {
       drawUmbrella(b, brightness);
       drawBench(b, brightness);
+      if (isSitting && (weather === 'rainy' || weather === 'stormy')) {
+        drawFoldedUmbrella(b.x + 50, b.y - 62, 0.18, brightness);
+      }
     }
 
     // Grass blades — sway gently with time
@@ -1548,6 +1702,11 @@
     const rShoulderX = cx + 18;
     let lHandX, lHandY, rHandX, rHandY;
 
+    const holdingUmbrella = !isSitting && (weather === 'rainy' || weather === 'stormy');
+    // Where her right hand grips the portable umbrella handle (near her head, on her right side)
+    const umbHandX = cx + 22;
+    const umbHandY = headY - 8;
+
     if (isSitting) {
       // Hands rest on lap, arms relaxed
       lHandX = cx - 16;
@@ -1570,6 +1729,7 @@
       const armSpread = scared ? 0.5 : 0.15;
       const armLen = 48;
 
+      // Left arm (always uses the default swinging/scared logic)
       const lArmAngle = armBase + armSpread + swing;
       const lElbowX = lShoulderX + Math.cos(Math.PI - lArmAngle * 0.6) * armLen * 0.5;
       const lElbowY = shoulderY + Math.sin(lArmAngle * 0.7) * armLen * 0.5;
@@ -1581,16 +1741,28 @@
       ctx.quadraticCurveTo(lElbowX, lElbowY, lHandX, lHandY);
       ctx.stroke();
 
-      const rArmAngle = armBase + armSpread - swing;
-      const rElbowX = rShoulderX - Math.cos(Math.PI - rArmAngle * 0.6) * armLen * 0.5;
-      const rElbowY = shoulderY + Math.sin(rArmAngle * 0.7) * armLen * 0.5;
-      rHandX = rShoulderX + Math.sin(rArmAngle) * armLen;
-      rHandY = shoulderY + Math.cos(rArmAngle) * armLen;
+      if (holdingUmbrella) {
+        // Right arm reaches up to the umbrella handle anchored above her head
+        rHandX = umbHandX;
+        rHandY = umbHandY;
+        const rElbowX = rShoulderX + 14;
+        const rElbowY = (shoulderY + rHandY) / 2 - 4;
+        ctx.beginPath();
+        ctx.moveTo(rShoulderX, shoulderY);
+        ctx.quadraticCurveTo(rElbowX, rElbowY, rHandX, rHandY);
+        ctx.stroke();
+      } else {
+        const rArmAngle = armBase + armSpread - swing;
+        const rElbowX = rShoulderX - Math.cos(Math.PI - rArmAngle * 0.6) * armLen * 0.5;
+        const rElbowY = shoulderY + Math.sin(rArmAngle * 0.7) * armLen * 0.5;
+        rHandX = rShoulderX + Math.sin(rArmAngle) * armLen;
+        rHandY = shoulderY + Math.cos(rArmAngle) * armLen;
 
-      ctx.beginPath();
-      ctx.moveTo(rShoulderX, shoulderY);
-      ctx.quadraticCurveTo(rElbowX, rElbowY, rHandX, rHandY);
-      ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(rShoulderX, shoulderY);
+        ctx.quadraticCurveTo(rElbowX, rElbowY, rHandX, rHandY);
+        ctx.stroke();
+      }
     }
 
     // Hands
@@ -1712,6 +1884,11 @@
       ctx.moveTo(cx - headR * 0.18, headY + headR * 0.5);
       ctx.quadraticCurveTo(cx, headY + headR * 0.68, cx + headR * 0.18, headY + headR * 0.5);
       ctx.stroke();
+    }
+
+    // Open portable umbrella held over her head (rainy/stormy + standing)
+    if (!isSitting && (weather === 'rainy' || weather === 'stormy')) {
+      drawOpenPortableUmbrella(cx + 22, headY - 8, currentBrightness);
     }
 
     // Weather particles drawn last so they cover everything
