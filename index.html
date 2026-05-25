@@ -1006,13 +1006,15 @@
     // Skin legs (base layer; pants will overlay this for some outfits)
     strokeLegPath(SKIN, 11);
 
-    // ---- Torso skin (drawn before outfit so any uncovered chest/shoulders show skin, not background) ----
+    // ---- Torso skin (chest -> midriff -> hips; covers the abdomen for every outfit) ----
     ctx.fillStyle = SKIN;
     ctx.beginPath();
     ctx.moveTo(cx - 6, neckY);
     ctx.quadraticCurveTo(cx - 20, shoulderY - 2, cx - 22, shoulderY + 6);
-    ctx.quadraticCurveTo(cx - 24, waistY, cx - 22, waistY + 2);
-    ctx.lineTo(cx + 22, waistY + 2);
+    ctx.quadraticCurveTo(cx - 24, waistY, cx - 20, waistY + 2);
+    ctx.quadraticCurveTo(cx - 22, hipY - 8, cx - 20, hipY + 6);
+    ctx.lineTo(cx + 20, hipY + 6);
+    ctx.quadraticCurveTo(cx + 22, hipY - 8, cx + 20, waistY + 2);
     ctx.quadraticCurveTo(cx + 24, waistY, cx + 22, shoulderY + 6);
     ctx.quadraticCurveTo(cx + 20, shoulderY - 2, cx + 6, neckY);
     ctx.closePath();
@@ -1177,15 +1179,20 @@
       case 'overalls': {
         // Long pants over legs (denim color uses DRESS as the dye)
         strokeLegPath(DRESS, 18);
-        // Bib top (chest panel)
+        // Bib + waistband: chest panel that extends down to meet the pants at the hips
         ctx.fillStyle = DRESS;
         ctx.beginPath();
         ctx.moveTo(cx - 16, shoulderY + 12);
         ctx.lineTo(cx + 16, shoulderY + 12);
         ctx.lineTo(cx + 22, waistY + 2);
+        ctx.lineTo(cx + 20, hipY + 4);
+        ctx.lineTo(cx - 20, hipY + 4);
         ctx.lineTo(cx - 22, waistY + 2);
         ctx.closePath();
         ctx.fill();
+        // Darker waistband stripe where the bib meets the pants
+        ctx.fillStyle = DRESS_DARK;
+        ctx.fillRect(cx - 20, hipY, 40, 4);
         // Two straps from bib to shoulders
         ctx.strokeStyle = DRESS;
         ctx.lineWidth = 5;
