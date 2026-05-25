@@ -712,13 +712,33 @@
 
     // Clouds — tint slightly with sky color at sunset
     const dt = (now - lastFrame) / 1000;
+    // Cloud color depends on weather
+    let cloudTint, cloudAlpha;
+    switch (weather) {
+      case 'rainy':
+        cloudTint = lerpC([120, 130, 145], bot, 0.15);
+        cloudAlpha = 0.88;
+        break;
+      case 'stormy':
+        cloudTint = lerpC([55, 60, 75], bot, 0.1);
+        cloudAlpha = 0.92;
+        break;
+      case 'snowy':
+        cloudTint = lerpC([200, 205, 215], bot, 0.15);
+        cloudAlpha = 0.85;
+        break;
+      case 'cloudy':
+        cloudTint = lerpC([225, 228, 232], bot, 0.2);
+        cloudAlpha = 0.85;
+        break;
+      default:
+        cloudTint = lerpC([255, 255, 255], bot, 0.3);
+        cloudAlpha = 0.65 + 0.25 * brightness;
+    }
     for (const c of clouds) {
       c.x += c.speed * dt;
       if (c.x - 100 * c.scale > width) c.x = -100 * c.scale;
-
-      const tint = lerpC([255, 255, 255], bot, 0.3);
-      const cloudAlpha = 0.65 + 0.25 * brightness;
-      drawCloud(c.x, c.y, c.scale, c.puffs, tint, cloudAlpha);
+      drawCloud(c.x, c.y, c.scale, c.puffs, cloudTint, cloudAlpha);
     }
 
     // Ground / grass base
