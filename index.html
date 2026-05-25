@@ -1177,15 +1177,6 @@
       case 'overalls': {
         // Long pants over legs (denim color uses DRESS as the dye)
         strokeLegPath(DRESS, 18);
-        // Inseam line
-        ctx.strokeStyle = DRESS_DARK;
-        ctx.lineWidth = 1.5;
-        if (!legGeom.sitting) {
-          ctx.beginPath();
-          ctx.moveTo(cx, hipY + 4);
-          ctx.lineTo(cx, footY - 6);
-          ctx.stroke();
-        }
         // Bib top (chest panel)
         ctx.fillStyle = DRESS;
         ctx.beginPath();
