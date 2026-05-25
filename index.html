@@ -111,13 +111,57 @@
     mouse.y = -9999;
   });
 
+  // -------- Floating catch messages --------
+  const CATCH_MESSAGES = ['Gotcha!', 'Found you!', 'Tag!', 'Caught ya!', 'Boop!', "Got 'em!"];
+  const floatingMessages = []; // {text, x, y, born, duration}
+
   window.addEventListener('click', (e) => {
     const dx = (e.clientX - ellipse.x) / ellipse.rx;
     const dy = (e.clientY - ellipse.y) / ellipse.ry;
     if (dx * dx + dy * dy <= 1) {
-      alert('you won');
+      const text = CATCH_MESSAGES[Math.floor(Math.random() * CATCH_MESSAGES.length)];
+      floatingMessages.push({
+        text,
+        x: ellipse.x,
+        y: ellipse.y - ellipse.ry - 18,
+        born: performance.now(),
+        duration: 1500,
+      });
     }
   });
+
+  function drawFloatingMessages(now) {
+    for (let i = floatingMessages.length - 1; i >= 0; i--) {
+      const m = floatingMessages[i];
+      const elapsed = now - m.born;
+      if (elapsed >= m.duration) {
+        floatingMessages.splice(i, 1);
+        continue;
+      }
+      const t = elapsed / m.duration;          // 0..1
+      const yOffset = -t * 70;                  // float upward
+      let alpha;
+      if (t < 0.12) alpha = t / 0.12;          // fade in
+      else if (t > 0.7) alpha = (1 - t) / 0.3; // fade out
+      else alpha = 1;
+      // Pop scale: start large, settle to 1, then drift up
+      const scale = 0.7 + Math.min(1, t / 0.12) * 0.4;
+
+      ctx.save();
+      ctx.translate(m.x, m.y + yOffset);
+      ctx.scale(scale, scale);
+      ctx.font = 'bold 32px system-ui, "Noto Sans KR", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 5;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = `rgba(31, 41, 55, ${alpha * 0.85})`;
+      ctx.strokeText(m.text, 0, 0);
+      ctx.fillStyle = `rgba(254, 240, 138, ${alpha})`;
+      ctx.fillText(m.text, 0, 0);
+      ctx.restore();
+    }
+  }
 
   const FEAR_RADIUS = 220;
   const MAX_SPEED = 14;
@@ -1925,6 +1969,10 @@
 
     // Weather particles drawn last so they cover everything
     drawWeather(now, dt);
+
+    // Floating catch messages on top of everything
+    drawFloatingMessages(now);
+
     lastFrame = now;
   }
 
