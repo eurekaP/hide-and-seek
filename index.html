@@ -116,6 +116,8 @@
   let _prevDayT = 0.35; // previous frame's day cycle t (matches the offset used in dayIndex)
   let teleportCooldown = 0;  // timestamp until next teleport allowed
   const poofs = [];          // {x, y, born, duration} — vampire teleport puffs
+  let falling = false;       // angel sunset transition — falling under gravity
+  let fallVy = 0;            // current downward velocity while falling
   const SUNSET_T = 0.78;
   const SUNRISE_T = 0.22;
 
@@ -132,23 +134,40 @@
     const t = currentDayT();
     const crossedSunset  = _prevDayT < SUNSET_T  && t >= SUNSET_T;
     const crossedSunrise = _prevDayT < SUNRISE_T && t >= SUNRISE_T;
-    // Angel mode ends at sunset (day is over); vampire mode ends at sunrise (night is over).
+    // Angel mode ends at sunset — she gently falls to the ground under gravity.
     if (crossedSunset && mode === 'angel') {
-      mode = 'normal';
-      isSitting = false;
+      const groundTarget = height * 0.82 - ellipse.ry * 0.95;
+      if (ellipse.y < groundTarget - 5) {
+        // Airborne — start the fall; wings stay visible until she lands
+        falling = true;
+        fallVy = 0;
+      } else {
+        // Already on the ground — instant revert (rare: wet-angel grounded case)
+        mode = 'normal';
+        isSitting = false;
+      }
       floatingMessages.push({
         text: '🌇 Day fades…',
         x: ellipse.x, y: ellipse.y - ellipse.ry - 18,
         born: performance.now(), duration: 2200,
       });
     }
+    // Vampire mode ends at sunrise — she teleports straight to the bench and sits.
     if (crossedSunrise && mode === 'vampire') {
+      const now = performance.now();
+      const bench = ground.benches[0];
+      poofs.push({ x: ellipse.x, y: ellipse.y, born: now, duration: 500 });
+      ellipse.x = bench.x;
+      ellipse.y = seatY();
+      ellipse.vx = 0;
+      ellipse.vy = 0;
+      isSitting = true;
+      poofs.push({ x: ellipse.x, y: ellipse.y, born: now, duration: 500 });
       mode = 'normal';
-      isSitting = false;
       floatingMessages.push({
         text: '🌅 Dawn breaks…',
         x: ellipse.x, y: ellipse.y - ellipse.ry - 18,
-        born: performance.now(), duration: 2200,
+        born: now, duration: 2200,
       });
     }
     _prevDayT = t;
@@ -457,79 +476,116 @@
   }
 
   function drawBatWing(cx, anchorY, side, flapPhase) {
-    const baseX = cx + side * 12;
-    const baseY = anchorY - 4;
-    const flap = flapPhase * 5;
+    const baseX = cx + side * 10;
+    const baseY = anchorY - 6;
+    const flap = flapPhase * 7;
 
-    const membrane     = '#2a1626';
-    const membraneDark = '#150a18';
-    const membraneEdge = '#3d2640';
+    const membrane      = '#1a0e24';   // deep indigo-black
+    const membraneEdge  = '#070310';   // very dark outline
+    const membraneInner = '#2c1936';   // slightly lighter inner shading
+    const membraneShine = '#5a3a72';   // glossy highlight
+    const ribColor      = '#080410';
 
     ctx.save();
 
-    // Main bat membrane — pointed thumb claw at top, scalloped lower edge
+    // Five finger tips along the outer rim from top (thumb claw) down to inner
+    const tips = [
+      { x: baseX + side * 6,   y: baseY - 56 + flap },           // top thumb claw (sharp)
+      { x: baseX + side * 52,  y: baseY - 48 + flap },           // index finger
+      { x: baseX + side * 96,  y: baseY - 18 + flap * 0.7 },     // middle (longest, outermost)
+      { x: baseX + side * 88,  y: baseY + 22 + flap * 0.3 },     // ring finger
+      { x: baseX + side * 52,  y: baseY + 50 },                  // little finger
+    ];
+    const inner = { x: baseX + side * 4, y: baseY + 20 };
+
+    // ---- Membrane fill ----
     ctx.fillStyle = membrane;
     ctx.beginPath();
     ctx.moveTo(baseX, baseY);
-    // Upper edge sweeping out and up
-    ctx.quadraticCurveTo(
-      baseX + side * 22, baseY - 28 + flap,
-      baseX + side * 50, baseY - 30 + flap
-    );
-    // Pointed claw at the upper tip
-    ctx.lineTo(baseX + side * 60, baseY - 38 + flap);
-    ctx.lineTo(baseX + side * 56, baseY - 24 + flap);
-    // Outer wing tip
-    ctx.lineTo(baseX + side * 70, baseY - 8 + flap * 0.5);
-    // Scalloped lower edge — series of pointed dips between fingers
-    const scallops = 4;
-    const tipX = baseX + side * 70;
-    const tipY = baseY - 8 + flap * 0.5;
-    const innerX = baseX + side * 4;
-    const innerY = baseY + 6;
-    for (let i = 1; i <= scallops; i++) {
-      const t = i / scallops;
-      const endX = tipX + (innerX - tipX) * t;
-      const endY = tipY + (innerY - tipY) * t;
-      const prevT = (i - 1) / scallops;
-      const startX = tipX + (innerX - tipX) * prevT;
-      const startY = tipY + (innerY - tipY) * prevT;
-      const midX = (startX + endX) / 2;
-      const midY = (startY + endY) / 2 + 9; // dip outward (downward)
-      ctx.quadraticCurveTo(midX, midY, endX, endY);
+    // Top edge sweeping up to the thumb claw
+    ctx.quadraticCurveTo(baseX + side * 2, baseY - 30 + flap, tips[0].x, tips[0].y);
+    // Concave scallops between each pair of fingertips (pulled inward toward base)
+    for (let i = 1; i < tips.length; i++) {
+      const prev = tips[i - 1];
+      const curr = tips[i];
+      const mx = (prev.x + curr.x) / 2;
+      const my = (prev.y + curr.y) / 2;
+      // Pull the midpoint 38% of the way toward the base for a deep scallop
+      const cpX = mx + (baseX - mx) * 0.38;
+      const cpY = my + (baseY - my) * 0.38;
+      ctx.quadraticCurveTo(cpX, cpY, curr.x, curr.y);
     }
+    // From last fingertip back inward to the body
+    ctx.quadraticCurveTo(
+      (tips[tips.length - 1].x + inner.x) / 2 + side * 6,
+      (tips[tips.length - 1].y + inner.y) / 2 + 4,
+      inner.x, inner.y
+    );
+    ctx.lineTo(baseX, baseY);
     ctx.closePath();
     ctx.fill();
 
-    // Finger ribs — radial dark lines from base to each scallop boundary
-    ctx.strokeStyle = membraneDark;
-    ctx.lineWidth = 1.4;
-    ctx.lineCap = 'round';
-    for (let i = 1; i < scallops; i++) {
-      const t = i / scallops;
-      const ex = tipX + (innerX - tipX) * t;
-      const ey = tipY + (innerY - tipY) * t;
-      ctx.beginPath();
-      ctx.moveTo(baseX, baseY);
-      ctx.lineTo(ex, ey);
-      ctx.stroke();
-    }
-    // Top "thumb" rib to the upper claw
+    // ---- Inner shading near the base (gives a soft volume to the wing fold) ----
+    ctx.fillStyle = membraneInner;
+    ctx.globalAlpha = 0.55;
     ctx.beginPath();
     ctx.moveTo(baseX, baseY);
-    ctx.lineTo(baseX + side * 60, baseY - 38 + flap);
+    ctx.quadraticCurveTo(baseX + side * 24, baseY - 8, baseX + side * 32, baseY + 14);
+    ctx.quadraticCurveTo(baseX + side * 20, baseY + 8, inner.x, inner.y);
+    ctx.lineTo(baseX, baseY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // ---- Finger bones — radiating ribs from base to each fingertip ----
+    ctx.strokeStyle = ribColor;
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+    for (const tip of tips) {
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.lineTo(tip.x, tip.y);
+      ctx.stroke();
+    }
+
+    // ---- Tiny pointed claw at the thumb tip ----
+    ctx.fillStyle = ribColor;
+    ctx.beginPath();
+    ctx.moveTo(tips[0].x, tips[0].y);
+    ctx.lineTo(tips[0].x + side * 4, tips[0].y - 6);
+    ctx.lineTo(tips[0].x - side * 2, tips[0].y - 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // ---- Outer rim dark outline tying the scallops together ----
+    ctx.strokeStyle = membraneEdge;
+    ctx.lineWidth = 1.2;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(tips[0].x, tips[0].y);
+    for (let i = 1; i < tips.length; i++) {
+      const prev = tips[i - 1];
+      const curr = tips[i];
+      const mx = (prev.x + curr.x) / 2;
+      const my = (prev.y + curr.y) / 2;
+      const cpX = mx + (baseX - mx) * 0.38;
+      const cpY = my + (baseY - my) * 0.38;
+      ctx.quadraticCurveTo(cpX, cpY, curr.x, curr.y);
+    }
     ctx.stroke();
 
-    // Subtle highlight along the upper edge
-    ctx.strokeStyle = membraneEdge;
-    ctx.lineWidth = 1;
+    // ---- Glossy highlight along the upper edge ----
+    ctx.strokeStyle = membraneShine;
+    ctx.lineWidth = 1.2;
+    ctx.globalAlpha = 0.55;
     ctx.beginPath();
-    ctx.moveTo(baseX + side * 5, baseY - 4);
+    ctx.moveTo(baseX + side * 4, baseY - 8);
     ctx.quadraticCurveTo(
-      baseX + side * 25, baseY - 24 + flap,
-      baseX + side * 48, baseY - 26 + flap
+      baseX + side * 20, baseY - 36 + flap,
+      tips[1].x - side * 10, tips[1].y + 4
     );
     ctx.stroke();
+    ctx.globalAlpha = 1;
 
     ctx.restore();
   }
@@ -1347,25 +1403,54 @@
       const moonY = horizon - Math.sin(Math.PI * n) * (horizon - 70);
       const moonR = 28;
 
-      const glow = ctx.createRadialGradient(moonX, moonY, moonR * 0.5, moonX, moonY, moonR * 3);
-      glow.addColorStop(0, `rgba(220, 230, 255, ${0.4 * starAlpha})`);
-      glow.addColorStop(1, 'rgba(220, 230, 255, 0)');
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(moonX, moonY, moonR * 3, 0, Math.PI * 2);
-      ctx.fill();
+      // Moon phase: 8-day cycle. 0=new, 0.25=first quarter, 0.5=full, 0.75=last quarter
+      const PHASE_DAYS = 8;
+      const phaseT = ((dayIndex() % PHASE_DAYS) + PHASE_DAYS) % PHASE_DAYS / PHASE_DAYS;
+      const litFraction = (1 - Math.cos(2 * Math.PI * phaseT)) / 2; // 0..1, 1 at full moon
 
-      ctx.fillStyle = '#f5f3e8';
-      ctx.beginPath();
-      ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
-      ctx.fill();
-      // craters
-      ctx.fillStyle = 'rgba(180, 175, 160, 0.6)';
-      ctx.beginPath();
-      ctx.arc(moonX - 8, moonY - 6, 4, 0, Math.PI * 2);
-      ctx.arc(moonX + 6, moonY + 4, 3, 0, Math.PI * 2);
-      ctx.arc(moonX + 2, moonY - 10, 2.5, 0, Math.PI * 2);
-      ctx.fill();
+      // Skip drawing entirely on a new moon
+      if (litFraction > 0.01) {
+        // Glow scales with the lit fraction
+        const glow = ctx.createRadialGradient(moonX, moonY, moonR * 0.5, moonX, moonY, moonR * 3);
+        glow.addColorStop(0, `rgba(220, 230, 255, ${0.4 * starAlpha * litFraction})`);
+        glow.addColorStop(1, 'rgba(220, 230, 255, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(moonX, moonY, moonR * 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Clip everything to the moon disc so the phase shadow only affects the moon
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+        ctx.clip();
+
+        // Lit disc
+        ctx.fillStyle = '#f5f3e8';
+        ctx.fillRect(moonX - moonR, moonY - moonR, moonR * 2, moonR * 2);
+
+        // Craters (visible only on the lit portion thanks to clip)
+        ctx.fillStyle = 'rgba(180, 175, 160, 0.6)';
+        ctx.beginPath();
+        ctx.arc(moonX - 8, moonY - 6, 4, 0, Math.PI * 2);
+        ctx.arc(moonX + 6, moonY + 4, 3, 0, Math.PI * 2);
+        ctx.arc(moonX + 2, moonY - 10, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Phase shadow: another disc of the same radius shifted horizontally; the offset hides part of the moon
+        // Waxing  (phaseT in [0,0.5)): offset goes 0 → -2R (lit side appears on the right)
+        // Waning  (phaseT in (0.5,1]): offset goes +2R → 0  (lit side appears on the left)
+        if (Math.abs(phaseT - 0.5) > 0.005) {
+          const offset = phaseT < 0.5 ? -4 * moonR * phaseT : 4 * moonR * (1 - phaseT);
+          // Match the sky color behind the moon so the shadowed part visually disappears
+          ctx.fillStyle = rgb(top);
+          ctx.beginPath();
+          ctx.arc(moonX + offset, moonY, moonR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
     }
 
     // Clouds — tint slightly with sky color at sunset
@@ -1412,7 +1497,7 @@
     for (const b of ground.benches) {
       drawUmbrella(b, brightness);
       drawBench(b, brightness);
-      if (isSitting && (weather === 'rainy' || weather === 'stormy')) {
+      if (isSitting && (weather === 'rainy' || weather === 'stormy') && mode !== 'vampire') {
         drawFoldedUmbrella(b.x + 50, b.y - 62, 0.18, brightness);
       }
     }
@@ -1527,6 +1612,29 @@
 
   function step() {
     checkDayNightTransition();
+
+    // Angel sunset transition — keep applying gravity until she lands, then revert
+    if (falling) {
+      fallVy += 0.6;             // gravity accel
+      if (fallVy > 14) fallVy = 14;
+      ellipse.y += fallVy;
+      ellipse.vx *= 0.95;
+      ellipse.x += ellipse.vx;
+      if (ellipse.x < ellipse.rx)         { ellipse.x = ellipse.rx;         ellipse.vx = 0; }
+      if (ellipse.x > width - ellipse.rx) { ellipse.x = width - ellipse.rx; ellipse.vx = 0; }
+      const groundTarget = height * 0.82 - ellipse.ry * 0.95;
+      if (ellipse.y >= groundTarget) {
+        ellipse.y = groundTarget;
+        falling = false;
+        fallVy = 0;
+        mode = 'normal';
+        isSitting = false;
+      }
+      draw(Math.hypot(ellipse.x - mouse.x, ellipse.y - mouse.y));
+      requestAnimationFrame(step);
+      return;
+    }
+
     const dx = ellipse.x - mouse.x;
     const dy = ellipse.y - mouse.y;
     const dist = Math.hypot(dx, dy);
@@ -1572,10 +1680,12 @@
       if (ellipse.y < ellipse.ry)         { ellipse.y = ellipse.ry;         ellipse.vy = 0; }
       if (ellipse.y > skyFloor)           { ellipse.y = skyFloor;           ellipse.vy = 0; }
     } else if (canFly) {
-      // ---- Angel flying: free 2D movement ----
+      // ---- Angel flying: free 2D movement, 1.5x faster than normal ----
+      const angelSpeed = MAX_SPEED * 1.5;
+      const angelAccel = 1.5;
       isSitting = false;
       if (scared && dist > 0.001) {
-        const strength = (1 - dist / FEAR_RADIUS) * 2.5;
+        const strength = (1 - dist / FEAR_RADIUS) * 2.5 * angelAccel;
         ellipse.vx += (dx / dist) * strength;
         ellipse.vy += (dy / dist) * strength;
       } else {
@@ -1587,9 +1697,9 @@
       ellipse.vy *= FRICTION;
 
       const speed = Math.hypot(ellipse.vx, ellipse.vy);
-      if (speed > MAX_SPEED) {
-        ellipse.vx = (ellipse.vx / speed) * MAX_SPEED;
-        ellipse.vy = (ellipse.vy / speed) * MAX_SPEED;
+      if (speed > angelSpeed) {
+        ellipse.vx = (ellipse.vx / speed) * angelSpeed;
+        ellipse.vy = (ellipse.vy / speed) * angelSpeed;
       }
 
       ellipse.x += ellipse.vx;
@@ -2136,7 +2246,7 @@
     const rShoulderX = cx + 18;
     let lHandX, lHandY, rHandX, rHandY;
 
-    const holdingUmbrella = !isSitting && (weather === 'rainy' || weather === 'stormy');
+    const holdingUmbrella = !isSitting && (weather === 'rainy' || weather === 'stormy') && mode !== 'vampire';
     // Where her right hand grips the portable umbrella handle (near her head, on her right side)
     const umbHandX = cx + 22;
     const umbHandY = headY - 8;
@@ -2373,8 +2483,8 @@
       ctx.stroke();
     }
 
-    // Open portable umbrella held over her head (rainy/stormy + standing)
-    if (!isSitting && (weather === 'rainy' || weather === 'stormy')) {
+    // Open portable umbrella held over her head (rainy/stormy + standing, but not in vampire mode)
+    if (!isSitting && (weather === 'rainy' || weather === 'stormy') && mode !== 'vampire') {
       drawOpenPortableUmbrella(cx + 22, headY - 8, currentBrightness);
     }
 
