@@ -9,17 +9,28 @@
     padding: 0;
     height: 100%;
     overflow: hidden;
-    background: radial-gradient(circle at 50% 50%, #1e293b, #0f172a);
+    background: #87ceeb;
     font-family: system-ui, sans-serif;
-    color: #cbd5e1;
+    color: #1f2937;
   }
   #hint {
     position: fixed;
     top: 16px;
     left: 16px;
     font-size: 14px;
-    opacity: 0.7;
+    opacity: 0.85;
     pointer-events: none;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.6);
+  }
+  #clock {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.85;
+    pointer-events: none;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.6);
   }
   canvas {
     display: block;
@@ -28,6 +39,7 @@
 </head>
 <body>
 <div id="hint">She's shy — try to catch her with a click!</div>
+<div id="clock">--:--</div>
 <canvas id="stage"></canvas>
 <script>
   const canvas = document.getElementById('stage');
@@ -72,47 +84,269 @@
   const MAX_SPEED = 14;
   const FRICTION = 0.88;
 
+  // -------- Day / sky / clouds --------
+  const CYCLE_SECONDS = 90; // one full day every 90 seconds
+  const startTime = performance.now();
+  const clockEl = document.getElementById('clock');
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function lerpC(c1, c2, t) {
+    return [
+      Math.round(lerp(c1[0], c2[0], t)),
+      Math.round(lerp(c1[1], c2[1], t)),
+      Math.round(lerp(c1[2], c2[2], t)),
+    ];
+  }
+  function rgb(c, a = 1) {
+    return a < 1 ? `rgba(${c[0]},${c[1]},${c[2]},${a})` : `rgb(${c[0]},${c[1]},${c[2]})`;
+  }
+
+  // Sky keyframes around a 24h day (t in [0,1], 0 = midnight)
+  const SKY = [
+    { t: 0.00, top: [10, 14, 39],    bot: [26, 26, 62] },     // midnight
+    { t: 0.20, top: [74, 58, 110],   bot: [255, 170, 130] },  // dawn
+    { t: 0.30, top: [135, 206, 235], bot: [255, 224, 178] },  // sunrise
+    { t: 0.50, top: [77, 171, 247],  bot: [185, 226, 255] },  // noon
+    { t: 0.70, top: [116, 192, 252], bot: [255, 214, 165] },  // afternoon
+    { t: 0.80, top: [255, 107, 157], bot: [255, 158, 110] },  // sunset
+    { t: 0.90, top: [61, 43, 86],    bot: [200, 90, 130] },   // dusk
+    { t: 1.00, top: [10, 14, 39],    bot: [26, 26, 62] },     // midnight
+  ];
+
+  function skyColors(t) {
+    for (let i = 0; i < SKY.length - 1; i++) {
+      const a = SKY[i], b = SKY[i + 1];
+      if (t >= a.t && t <= b.t) {
+        const k = (t - a.t) / (b.t - a.t);
+        return { top: lerpC(a.top, b.top, k), bot: lerpC(a.bot, b.bot, k) };
+      }
+    }
+    return { top: SKY[0].top, bot: SKY[0].bot };
+  }
+
+  // Clouds — drift across, wrap around
+  const clouds = [];
+  function spawnClouds() {
+    clouds.length = 0;
+    const count = 7;
+    for (let i = 0; i < count; i++) {
+      clouds.push({
+        x: Math.random() * width,
+        y: 40 + Math.random() * (height * 0.4),
+        scale: 0.6 + Math.random() * 1.0,
+        speed: 8 + Math.random() * 18, // px/sec
+        puffs: 3 + Math.floor(Math.random() * 3),
+      });
+    }
+  }
+
+  // Stars — only visible at night
+  const stars = [];
+  function spawnStars() {
+    stars.length = 0;
+    for (let i = 0; i < 80; i++) {
+      stars.push({
+        x: Math.random() * width,
+        y: Math.random() * height * 0.7,
+        r: Math.random() * 1.4 + 0.3,
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
+  spawnClouds();
+  spawnStars();
+  window.addEventListener('resize', () => { spawnClouds(); spawnStars(); });
+
+  let lastFrame = performance.now();
+
+  function drawBackground(now) {
+    const elapsed = (now - startTime) / 1000;
+    // start mid-morning so first impression is sunny
+    const t = ((elapsed / CYCLE_SECONDS) + 0.35) % 1;
+
+    const { top, bot } = skyColors(t);
+
+    // Sky gradient
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    sky.addColorStop(0, rgb(top));
+    sky.addColorStop(1, rgb(bot));
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, width, height);
+
+    // Stars — fade in with darkness (use top color brightness)
+    const brightness = (top[0] + top[1] + top[2]) / (3 * 255);
+    const starAlpha = Math.max(0, 1 - brightness * 2.5);
+    if (starAlpha > 0.01) {
+      for (const s of stars) {
+        const twinkle = 0.5 + 0.5 * Math.sin(now / 400 + s.phase);
+        ctx.fillStyle = `rgba(255, 255, 230, ${starAlpha * twinkle})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Sun arc — visible roughly 0.22..0.78
+    const horizon = height * 0.82;
+    if (t > 0.22 && t < 0.78) {
+      const n = (t - 0.22) / 0.56;
+      const sunX = lerp(60, width - 60, n);
+      const sunY = horizon - Math.sin(Math.PI * n) * (horizon - 70);
+      const sunR = 38;
+
+      // glow
+      const glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.5, sunX, sunY, sunR * 4);
+      glow.addColorStop(0, 'rgba(255, 240, 180, 0.55)');
+      glow.addColorStop(1, 'rgba(255, 240, 180, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sunR * 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // sun disc — warmer near horizon
+      const nearHorizon = Math.min(1, Math.abs(n - 0.5) * 2);
+      const sunCore = lerpC([255, 250, 220], [255, 160, 80], nearHorizon);
+      ctx.fillStyle = rgb(sunCore);
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Moon — opposite side of the cycle (night phase)
+    const moonRaw = ((t - 0.78) + 1) % 1; // 0 at moonrise (t=0.78), 1 at moonset (t=0.22 next day, span 0.44)
+    if (moonRaw < 0.44) {
+      const n = moonRaw / 0.44;
+      const moonX = lerp(60, width - 60, n);
+      const moonY = horizon - Math.sin(Math.PI * n) * (horizon - 70);
+      const moonR = 28;
+
+      const glow = ctx.createRadialGradient(moonX, moonY, moonR * 0.5, moonX, moonY, moonR * 3);
+      glow.addColorStop(0, `rgba(220, 230, 255, ${0.4 * starAlpha})`);
+      glow.addColorStop(1, 'rgba(220, 230, 255, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonR * 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#f5f3e8';
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+      ctx.fill();
+      // craters
+      ctx.fillStyle = 'rgba(180, 175, 160, 0.6)';
+      ctx.beginPath();
+      ctx.arc(moonX - 8, moonY - 6, 4, 0, Math.PI * 2);
+      ctx.arc(moonX + 6, moonY + 4, 3, 0, Math.PI * 2);
+      ctx.arc(moonX + 2, moonY - 10, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Clouds — tint slightly with sky color at sunset
+    const dt = (now - lastFrame) / 1000;
+    for (const c of clouds) {
+      c.x += c.speed * dt;
+      if (c.x - 100 * c.scale > width) c.x = -100 * c.scale;
+
+      const tint = lerpC([255, 255, 255], bot, 0.3);
+      const cloudAlpha = 0.65 + 0.25 * brightness;
+      drawCloud(c.x, c.y, c.scale, c.puffs, tint, cloudAlpha);
+    }
+
+    // Ground / grass
+    const grassTop = lerpC([90, 170, 80], [20, 40, 30], 1 - brightness);
+    const grassBot = lerpC([50, 110, 50], [10, 25, 15], 1 - brightness);
+    const grad = ctx.createLinearGradient(0, horizon, 0, height);
+    grad.addColorStop(0, rgb(grassTop));
+    grad.addColorStop(1, rgb(grassBot));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, horizon, width, height - horizon);
+
+    // update clock
+    const hours = Math.floor(t * 24);
+    const minutes = Math.floor((t * 24 * 60) % 60);
+    clockEl.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+
+  function drawCloud(x, y, scale, puffs, tint, alpha) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = alpha;
+
+    // soft shadow under cloud
+    ctx.fillStyle = rgb(lerpC(tint, [120, 130, 150], 0.3), 0.6);
+    for (let i = 0; i < puffs; i++) {
+      ctx.beginPath();
+      ctx.arc(i * 22 - puffs * 8, 6, 18, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // body
+    ctx.fillStyle = rgb(tint);
+    ctx.beginPath();
+    ctx.arc(0, 0, 22, 0, Math.PI * 2);
+    for (let i = 1; i < puffs; i++) {
+      ctx.arc(i * 20, -2 + (i % 2) * 4, 18 - (i % 2) * 2, 0, Math.PI * 2);
+    }
+    ctx.arc(puffs * 20 - 4, 4, 16, 0, Math.PI * 2);
+    ctx.fill();
+
+    // highlight
+    ctx.fillStyle = rgb(lerpC(tint, [255, 255, 255], 0.5), 0.9);
+    ctx.beginPath();
+    ctx.arc(-4, -6, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function groundY() {
+    return height * 0.82 - ellipse.ry * 0.95;
+  }
+
+  // Place her on the ground initially
+  ellipse.y = groundY();
+
   function step() {
     const dx = ellipse.x - mouse.x;
     const dy = ellipse.y - mouse.y;
     const dist = Math.hypot(dx, dy);
 
+    // Fear only pushes horizontally — she's walking on the ground
     if (dist < FEAR_RADIUS && dist > 0.001) {
       const strength = (1 - dist / FEAR_RADIUS) * 2.5;
       ellipse.vx += (dx / dist) * strength;
-      ellipse.vy += (dy / dist) * strength;
     }
 
-    // gentle pull back to center so it doesn't get stuck in corners
-    const cx = width / 2;
-    const cy = height / 2;
-    ellipse.vx += (cx - ellipse.x) * 0.0008;
-    ellipse.vy += (cy - ellipse.y) * 0.0008;
+    // gentle horizontal pull back toward center
+    ellipse.vx += (width / 2 - ellipse.x) * 0.0008;
 
     ellipse.vx *= FRICTION;
-    ellipse.vy *= FRICTION;
 
-    const speed = Math.hypot(ellipse.vx, ellipse.vy);
-    if (speed > MAX_SPEED) {
-      ellipse.vx = (ellipse.vx / speed) * MAX_SPEED;
-      ellipse.vy = (ellipse.vy / speed) * MAX_SPEED;
+    if (Math.abs(ellipse.vx) > MAX_SPEED) {
+      ellipse.vx = Math.sign(ellipse.vx) * MAX_SPEED;
     }
 
     ellipse.x += ellipse.vx;
-    ellipse.y += ellipse.vy;
 
-    // bounce off walls
+    // bounce off left/right walls
     if (ellipse.x < ellipse.rx) { ellipse.x = ellipse.rx; ellipse.vx *= -0.6; }
     if (ellipse.x > width - ellipse.rx) { ellipse.x = width - ellipse.rx; ellipse.vx *= -0.6; }
-    if (ellipse.y < ellipse.ry) { ellipse.y = ellipse.ry; ellipse.vy *= -0.6; }
-    if (ellipse.y > height - ellipse.ry) { ellipse.y = height - ellipse.ry; ellipse.vy *= -0.6; }
+
+    // Lock to ground
+    ellipse.vy = 0;
+    ellipse.y = groundY();
 
     draw(dist);
     requestAnimationFrame(step);
   }
 
   function draw(distToMouse) {
-    ctx.clearRect(0, 0, width, height);
+    const now = performance.now();
+    drawBackground(now);
+    lastFrame = now;
 
     const scared = distToMouse < FEAR_RADIUS;
     const cx = ellipse.x;
@@ -150,6 +384,17 @@
     const HAIR = '#3b1f17';
     const DRESS = scared ? '#fb7185' : '#f472b6';
     const DRESS_DARK = scared ? '#e11d48' : '#db2777';
+
+    // ---- Back hair (drawn first so body/arms/neck appear in front) ----
+    ctx.fillStyle = HAIR;
+    ctx.beginPath();
+    ctx.moveTo(cx - headR * 1.0, headY - headR * 0.2);
+    ctx.quadraticCurveTo(cx - headR * 1.05, headY - headR * 1.05, cx, headY - headR * 1.1);
+    ctx.quadraticCurveTo(cx + headR * 1.05, headY - headR * 1.05, cx + headR * 1.0, headY - headR * 0.2);
+    ctx.lineTo(cx + headR * 1.05, shoulderY + 8);
+    ctx.quadraticCurveTo(cx, shoulderY + 4, cx - headR * 1.05, shoulderY + 8);
+    ctx.closePath();
+    ctx.fill();
 
     // ---- Legs ----
     ctx.strokeStyle = SKIN;
@@ -265,20 +510,7 @@
     ctx.fillStyle = SKIN;
     ctx.fillRect(cx - 6, neckY, 12, shoulderY - neckY + 2);
 
-    // ---- Head ----
-    // Simple bob: hair cap on top + clean shoulder-length silhouette + straight bangs
-    ctx.fillStyle = HAIR;
-
-    // Back hair — clean bob, shoulder length, no waves
-    ctx.beginPath();
-    ctx.moveTo(cx - headR * 1.0, headY - headR * 0.2);
-    ctx.quadraticCurveTo(cx - headR * 1.05, headY - headR * 1.05, cx, headY - headR * 1.1);
-    ctx.quadraticCurveTo(cx + headR * 1.05, headY - headR * 1.05, cx + headR * 1.0, headY - headR * 0.2);
-    ctx.lineTo(cx + headR * 1.05, shoulderY + 8);
-    ctx.quadraticCurveTo(cx, shoulderY + 4, cx - headR * 1.05, shoulderY + 8);
-    ctx.closePath();
-    ctx.fill();
-
+    // ---- Head (face + front hair, drawn last so they cover neck/shoulders) ----
     // Face
     const skin = ctx.createRadialGradient(cx, headY, headR * 0.2, cx, headY, headR);
     skin.addColorStop(0, SKIN_LIGHT);
