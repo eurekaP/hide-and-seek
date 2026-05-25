@@ -32,6 +32,37 @@
     pointer-events: none;
     text-shadow: 0 1px 2px rgba(255,255,255,0.6);
   }
+  #weather {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    padding: 6px;
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(8px);
+    border-radius: 14px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.15);
+    z-index: 10;
+  }
+  #weather button {
+    border: none;
+    background: rgba(255, 255, 255, 0.55);
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: transform 0.1s, background 0.15s;
+    font-family: inherit;
+    color: #1f2937;
+  }
+  #weather button:hover { background: rgba(255, 255, 255, 0.85); }
+  #weather button.active {
+    background: #1f2937;
+    color: #fef3c7;
+    transform: translateY(-1px);
+  }
   canvas {
     display: block;
   }
@@ -40,6 +71,14 @@
 <body>
 <div id="hint">She's shy — try to catch her with a click!</div>
 <div id="clock">--:--</div>
+<div id="weather">
+  <button data-w="sunny" class="active">☀️ Sunny</button>
+  <button data-w="cloudy">⛅ Cloudy</button>
+  <button data-w="rainy">🌧️ Rainy</button>
+  <button data-w="stormy">⛈️ Stormy</button>
+  <button data-w="snowy">❄️ Snowy</button>
+  <button data-w="foggy">🌫️ Foggy</button>
+</div>
 <canvas id="stage"></canvas>
 <script>
   const canvas = document.getElementById('stage');
@@ -286,13 +325,271 @@
     // right armrest support
     ctx.fillRect(halfW - 20, armrestTopY + armrestH, 8, seatTopY - (armrestTopY + armrestH));
 
+    // Snow caps on horizontal surfaces
+    if (snowDepth > 0.03) {
+      const capAlpha = Math.min(0.95, snowDepth * 1.1);
+      ctx.fillStyle = `rgba(245, 248, 255, ${capAlpha})`;
+      const capH = 3 + snowDepth * 6;
+      // wavy snow on top of backrest
+      const drawWavyCap = (x0, x1, topY) => {
+        ctx.beginPath();
+        ctx.moveTo(x0, topY + 2);
+        for (let x = x0; x <= x1; x += 6) {
+          const n = Math.sin(x * 0.2) * 1.2 + Math.sin(x * 0.5) * 0.6;
+          ctx.lineTo(x, topY - capH + n * snowDepth);
+        }
+        ctx.lineTo(x1, topY + 2);
+        ctx.closePath();
+        ctx.fill();
+      };
+      drawWavyCap(-halfW + 4, halfW - 4, backTopY);
+      drawWavyCap(-halfW, halfW, seatTopY);
+      drawWavyCap(-halfW + 4, -halfW + 34, armrestTopY);
+      drawWavyCap(halfW - 34, halfW - 4, armrestTopY);
+    }
+
     ctx.restore();
   }
 
   spawnClouds();
   spawnStars();
   spawnGround();
-  window.addEventListener('resize', () => { spawnClouds(); spawnStars(); spawnGround(); });
+
+  // -------- Weather --------
+  let weather = 'sunny';
+  let lightningEnd = 0;
+  let lightningNext = 0;
+  let snowDepth = 0;   // 0..1 white blanket / bench caps
+  let wetness = 0;     // 0..1 puddle accumulation rate
+  const puddles = [];  // {x, y, size, alpha, targetAlpha}
+
+  function updateAccumulation(dt) {
+    // Snow build-up / melt
+    if (weather === 'snowy') {
+      snowDepth = Math.min(1, snowDepth + dt * 0.05);
+    } else {
+      snowDepth = Math.max(0, snowDepth - dt * 0.04);
+    }
+
+    // Puddle spawning / drying
+    const horizon = height * 0.82;
+    if (weather === 'rainy' || weather === 'stormy') {
+      const rate = weather === 'stormy' ? 8 : 4;
+      wetness = Math.min(1, wetness + dt * 0.1);
+      if (Math.random() < dt * rate && puddles.length < 40) {
+        puddles.push({
+          x: Math.random() * width,
+          y: horizon + 4 + Math.random() * (height - horizon - 10),
+          size: 8 + Math.random() * 26,
+          alpha: 0,
+          targetAlpha: 0.45 + Math.random() * 0.3,
+        });
+      }
+      for (const p of puddles) {
+        p.alpha = Math.min(p.targetAlpha, p.alpha + dt * 0.4);
+      }
+    } else {
+      wetness = Math.max(0, wetness - dt * 0.06);
+      for (const p of puddles) p.alpha = Math.max(0, p.alpha - dt * 0.18);
+      for (let i = puddles.length - 1; i >= 0; i--) {
+        if (puddles[i].alpha <= 0) puddles.splice(i, 1);
+      }
+    }
+  }
+
+  function drawSnowGround() {
+    if (snowDepth <= 0.001) return;
+    const horizon = height * 0.82;
+    const peakH = 16 * snowDepth;
+    ctx.fillStyle = `rgba(245, 248, 255, ${Math.min(0.95, snowDepth * 0.95)})`;
+    ctx.beginPath();
+    ctx.moveTo(0, height);
+    ctx.lineTo(0, horizon);
+    for (let x = 0; x <= width; x += 10) {
+      const noise = (Math.sin(x * 0.04) + Math.sin(x * 0.13) * 0.6) * peakH * 0.45 + peakH * 0.55;
+      ctx.lineTo(x, horizon - noise);
+    }
+    ctx.lineTo(width, horizon);
+    ctx.lineTo(width, height);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawPuddles() {
+    for (const p of puddles) {
+      if (p.alpha <= 0) continue;
+      // dark wet base
+      ctx.fillStyle = `rgba(45, 70, 105, ${p.alpha * 0.65})`;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, p.size, p.size * 0.32, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // sky reflection highlight
+      ctx.fillStyle = `rgba(200, 220, 240, ${p.alpha * 0.55})`;
+      ctx.beginPath();
+      ctx.ellipse(p.x - p.size * 0.25, p.y - p.size * 0.08, p.size * 0.55, p.size * 0.13, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  const rainDrops = [];
+  function spawnRain(count) {
+    rainDrops.length = 0;
+    for (let i = 0; i < count; i++) {
+      rainDrops.push({
+        x: Math.random() * (width + 200) - 100,
+        y: Math.random() * height,
+        len: 12 + Math.random() * 8,
+        speed: 700 + Math.random() * 400,
+      });
+    }
+  }
+
+  const snowflakes = [];
+  function spawnSnow(count) {
+    snowflakes.length = 0;
+    for (let i = 0; i < count; i++) {
+      snowflakes.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        size: 1 + Math.random() * 2.5,
+        speed: 30 + Math.random() * 50,
+        drift: 0.5 + Math.random() * 1.5,
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
+  spawnRain(220);
+  spawnSnow(180);
+
+  function setWeather(w) {
+    weather = w;
+    document.querySelectorAll('#weather button').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.w === w);
+    });
+    // Re-spawn clouds with weather-appropriate count
+    const cloudCount = (w === 'cloudy' || w === 'rainy' || w === 'stormy') ? 14 : 6;
+    if (clouds.length !== cloudCount) {
+      clouds.length = 0;
+      for (let i = 0; i < cloudCount; i++) {
+        clouds.push({
+          x: Math.random() * width,
+          y: 40 + Math.random() * (height * 0.4),
+          scale: 0.6 + Math.random() * 1.0,
+          speed: 8 + Math.random() * 18,
+          puffs: 3 + Math.floor(Math.random() * 3),
+        });
+      }
+    }
+  }
+
+  document.querySelectorAll('#weather button').forEach(btn => {
+    btn.addEventListener('click', () => setWeather(btn.dataset.w));
+  });
+
+  function weatherSkyTint(top, bot) {
+    switch (weather) {
+      case 'cloudy':
+        return {
+          top: lerpC(top, [165, 175, 190], 0.4),
+          bot: lerpC(bot, [200, 205, 215], 0.4),
+        };
+      case 'rainy':
+        return {
+          top: lerpC(top, [85, 95, 115], 0.6),
+          bot: lerpC(bot, [125, 135, 150], 0.55),
+        };
+      case 'stormy':
+        return {
+          top: lerpC(top, [40, 45, 60], 0.75),
+          bot: lerpC(bot, [70, 75, 90], 0.7),
+        };
+      case 'snowy':
+        return {
+          top: lerpC(top, [180, 195, 215], 0.55),
+          bot: lerpC(bot, [225, 230, 240], 0.55),
+        };
+      case 'foggy':
+        return {
+          top: lerpC(top, [215, 220, 225], 0.55),
+          bot: lerpC(bot, [225, 228, 232], 0.55),
+        };
+      default:
+        return { top, bot };
+    }
+  }
+
+  function celestialHidden() {
+    return weather === 'rainy' || weather === 'stormy' || weather === 'foggy';
+  }
+
+  function drawWeather(now, dt) {
+    // Rain
+    if (weather === 'rainy' || weather === 'stormy') {
+      const heavy = weather === 'stormy';
+      const speedMul = heavy ? 1.3 : 1.0;
+      const angle = heavy ? 0.25 : 0.15;
+      ctx.strokeStyle = heavy ? 'rgba(170, 190, 220, 0.75)' : 'rgba(180, 200, 230, 0.6)';
+      ctx.lineWidth = heavy ? 1.4 : 1;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (const d of rainDrops) {
+        d.y += d.speed * dt * speedMul;
+        d.x -= d.speed * dt * angle;
+        if (d.y > height) {
+          d.y = -d.len;
+          d.x = Math.random() * (width + 200) - 100;
+        } else if (d.x < -50) {
+          d.x = width + 20;
+        }
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x + d.len * angle, d.y + d.len);
+      }
+      ctx.stroke();
+    }
+
+    // Snow
+    if (weather === 'snowy') {
+      for (const s of snowflakes) {
+        s.y += s.speed * dt;
+        s.phase += dt * 0.8;
+        if (s.y > height) {
+          s.y = -s.size;
+          s.x = Math.random() * width;
+        }
+        const px = s.x + Math.sin(s.phase * s.drift) * 18;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.beginPath();
+        ctx.arc(px, s.y, s.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Lightning (stormy)
+    if (weather === 'stormy') {
+      if (now > lightningNext) {
+        lightningEnd = now + 100 + Math.random() * 180;
+        lightningNext = now + 1500 + Math.random() * 4000;
+      }
+      if (now < lightningEnd) {
+        const a = Math.min(0.75, (lightningEnd - now) / 180);
+        ctx.fillStyle = `rgba(255, 255, 240, ${a})`;
+        ctx.fillRect(0, 0, width, height);
+      }
+    }
+
+    // Fog overlay
+    if (weather === 'foggy') {
+      const fog = ctx.createLinearGradient(0, 0, 0, height);
+      fog.addColorStop(0, 'rgba(230, 232, 235, 0.35)');
+      fog.addColorStop(0.5, 'rgba(220, 222, 225, 0.55)');
+      fog.addColorStop(1, 'rgba(210, 212, 215, 0.7)');
+      ctx.fillStyle = fog;
+      ctx.fillRect(0, 0, width, height);
+    }
+  }
+
+  window.addEventListener('resize', () => { spawnClouds(); spawnStars(); spawnGround(); spawnRain(220); spawnSnow(180); });
 
   let lastFrame = performance.now();
 
@@ -301,7 +598,8 @@
     // start mid-morning so first impression is sunny
     const t = ((elapsed / CYCLE_SECONDS) + 0.35) % 1;
 
-    const { top, bot } = skyColors(t);
+    const baseColors = skyColors(t);
+    const { top, bot } = weatherSkyTint(baseColors.top, baseColors.bot);
 
     // Sky gradient
     const sky = ctx.createLinearGradient(0, 0, 0, height);
@@ -323,9 +621,9 @@
       }
     }
 
-    // Sun arc — visible roughly 0.22..0.78
+    // Sun arc — visible roughly 0.22..0.78 (hidden in bad weather)
     const horizon = height * 0.82;
-    if (t > 0.22 && t < 0.78) {
+    if (t > 0.22 && t < 0.78 && !celestialHidden()) {
       const n = (t - 0.22) / 0.56;
       const sunX = lerp(60, width - 60, n);
       const sunY = horizon - Math.sin(Math.PI * n) * (horizon - 70);
@@ -349,9 +647,9 @@
       ctx.fill();
     }
 
-    // Moon — opposite side of the cycle (night phase)
+    // Moon — opposite side of the cycle (night phase) (hidden in bad weather)
     const moonRaw = ((t - 0.78) + 1) % 1; // 0 at moonrise (t=0.78), 1 at moonset (t=0.22 next day, span 0.44)
-    if (moonRaw < 0.44) {
+    if (moonRaw < 0.44 && !celestialHidden()) {
       const n = moonRaw / 0.44;
       const moonX = lerp(60, width - 60, n);
       const moonY = horizon - Math.sin(Math.PI * n) * (horizon - 70);
@@ -448,6 +746,10 @@
       ctx.fill();
     }
 
+    // Accumulation effects on the ground (after grass/flowers so they appear under)
+    drawSnowGround();
+    drawPuddles();
+
     // update clock
     const hours = Math.floor(t * 24);
     const minutes = Math.floor((t * 24 * 60) % 60);
@@ -531,8 +833,9 @@
 
   function draw(distToMouse) {
     const now = performance.now();
+    const dt = Math.min(0.1, (now - lastFrame) / 1000);
+    updateAccumulation(dt);
     drawBackground(now);
-    lastFrame = now;
 
     const scared = distToMouse < FEAR_RADIUS;
     const cx = ellipse.x;
@@ -803,6 +1106,10 @@
       ctx.quadraticCurveTo(cx, headY + headR * 0.68, cx + headR * 0.18, headY + headR * 0.5);
       ctx.stroke();
     }
+
+    // Weather particles drawn last so they cover everything
+    drawWeather(now, dt);
+    lastFrame = now;
   }
 
   step();
