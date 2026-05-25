@@ -242,6 +242,86 @@
     ground.benches.push({ x: width * 0.22, y: horizon });
   }
 
+  function drawUmbrella(b, brightness) {
+    if (weather !== 'rainy' && weather !== 'stormy') return;
+
+    const fabric     = lerpC([200, 40, 55],  [85, 15, 22],  1 - brightness);
+    const fabricDark = lerpC([110, 18, 28],  [40, 6, 10],   1 - brightness);
+    const pole       = lerpC([65, 55, 45],   [25, 20, 15],  1 - brightness);
+    const poleDark   = lerpC([40, 32, 24],   [15, 12, 8],   1 - brightness);
+
+    ctx.save();
+    ctx.translate(b.x, b.y);
+
+    const halfCW = 150;
+    const eaveY = -255;
+    const peakY = -325;
+    const poleW = 5;
+    const poleBot = 8;
+    const panels = 8;
+    const scallopDepth = 11;
+
+    // Pole + base
+    ctx.fillStyle = rgb(pole);
+    ctx.fillRect(-poleW / 2, peakY, poleW, poleBot - peakY);
+    ctx.fillStyle = rgb(poleDark);
+    ctx.fillRect(poleW / 2 - 1, peakY, 1, poleBot - peakY);
+    ctx.fillStyle = rgb(lerpC([90, 80, 65], [35, 28, 18], 1 - brightness));
+    ctx.beginPath();
+    ctx.ellipse(0, poleBot, 16, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Canopy as 8 flat triangular panels meeting at the peak.
+    // Panels near the center face the viewer (brighter); side panels are tilted away (darker).
+    for (let i = 0; i < panels; i++) {
+      const t1 = i / panels;
+      const t2 = (i + 1) / panels;
+      const xL = -halfCW + t1 * 2 * halfCW;
+      const xR = -halfCW + t2 * 2 * halfCW;
+
+      const tMid = (t1 + t2) / 2;
+      const edgeness = Math.abs(tMid - 0.5) * 2; // 0 at center, 1 at edges
+      const shade = 1 - edgeness * 0.30;
+      const c = [
+        Math.floor(fabric[0] * shade),
+        Math.floor(fabric[1] * shade),
+        Math.floor(fabric[2] * shade),
+      ];
+      ctx.fillStyle = rgb(c);
+      ctx.beginPath();
+      ctx.moveTo(0, peakY);
+      ctx.lineTo(xL, eaveY);
+      const midX = (xL + xR) / 2;
+      ctx.quadraticCurveTo(midX, eaveY + scallopDepth, xR, eaveY);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Rib lines along the panel edges (slightly darker)
+    ctx.strokeStyle = rgb(fabricDark);
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i <= panels; i++) {
+      const t = i / panels;
+      const x = -halfCW + t * 2 * halfCW;
+      ctx.beginPath();
+      ctx.moveTo(0, peakY);
+      ctx.lineTo(x, eaveY);
+      ctx.stroke();
+    }
+
+    // Finial
+    ctx.fillStyle = rgb(poleDark);
+    ctx.beginPath();
+    ctx.arc(0, peakY - 4, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = rgb(pole);
+    ctx.beginPath();
+    ctx.arc(0, peakY - 4, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
   function drawBench(b, brightness) {
     const wood = lerpC([139, 90, 43], [55, 35, 16], 1 - brightness);
     const woodDark = lerpC([92, 51, 23], [35, 22, 10], 1 - brightness);
@@ -836,7 +916,10 @@
     ctx.fillRect(0, horizon, width, height - horizon);
 
     // Bench (drawn before grass so blades poke up in front of legs)
-    for (const b of ground.benches) drawBench(b, brightness);
+    for (const b of ground.benches) {
+      drawUmbrella(b, brightness);
+      drawBench(b, brightness);
+    }
 
     // Grass blades — sway gently with time
     const bladeColor = lerpC([60, 140, 65], [10, 30, 20], 1 - brightness);
