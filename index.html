@@ -247,16 +247,16 @@
     const woodDark = lerpC([92, 51, 23], [35, 22, 10], 1 - brightness);
     const woodLight = lerpC([176, 124, 70], [70, 48, 22], 1 - brightness);
 
-    // Bench dimensions — seats 2 adults
-    const W = 280;            // total width
+    // Bench dimensions — seats 2 adults but scaled down to look right next to the character
+    const W = 220;            // total width
     const halfW = W / 2;
-    const seatTopY = -95;     // top surface of seat
-    const seatThick = 14;
+    const seatTopY = -62;     // top surface of seat (low enough that sitting drops her height)
+    const seatThick = 11;
     const seatBotY = seatTopY + seatThick;
-    const legBotY = 12;       // legs sink slightly into ground
-    const backTopY = -200;    // top of backrest
-    const armrestH = 8;
-    const armrestTopY = seatTopY - 50;
+    const legBotY = 8;        // legs sink slightly into ground
+    const backTopY = -150;    // top of backrest
+    const armrestH = 7;
+    const armrestTopY = seatTopY - 40;
 
     ctx.save();
     ctx.translate(b.x, b.y);
@@ -829,8 +829,9 @@
   }
   // When sitting, her hip lines up with the bench seat top
   function seatY() {
+    // Must match seatTopY inside drawBench (currently -62)
     const bench = ground.benches[0];
-    return bench.y - 95 - ellipse.ry * 0.25;
+    return bench.y - 62 - ellipse.ry * 0.25;
   }
 
   let isSitting = false;
@@ -949,14 +950,15 @@
     const groundLevel = height * 0.82;
     let legGeom;
     if (isSitting) {
-      const kneeY_sit = hipY + 10;
+      // Longer thigh segment so seated pants/shorts read like real garments instead of stubs
+      const kneeY_sit = hipY + 30;
       legGeom = {
         sitting: true,
         kneeY_sit,
-        kneeX_L: cx - 7,
-        kneeX_R: cx + 7,
-        shoeLX: cx - 8,
-        shoeRX: cx + 8,
+        kneeX_L: cx - 6,
+        kneeX_R: cx + 6,
+        shoeLX: cx - 7,
+        shoeRX: cx + 7,
         shoeY: groundLevel,
       };
     } else {
