@@ -960,16 +960,18 @@
         shoeY: groundLevel,
       };
     } else {
-      const legSwing = Math.sin(phase) * (scared ? 14 : walking ? 7 : 2);
+      // Keep feet on their own sides: clamp swing so they never cross past center
+      const swingAmp = scared ? 6 : walking ? 4 : 1;
+      const legSwing = Math.sin(phase) * swingAmp;
       legGeom = {
         sitting: false,
         kneeY,
         leftFootX: cx - 12 + legSwing,
-        rightFootX: cx + 12 - legSwing,
+        rightFootX: cx + 12 + legSwing, // both feet shift together (subtle gait, no crossing)
         footY,
         shoeY: footY,
         shoeLX: cx - 12 + legSwing,
-        shoeRX: cx + 12 - legSwing,
+        shoeRX: cx + 12 + legSwing,
       };
     }
 
