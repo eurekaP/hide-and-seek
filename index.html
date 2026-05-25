@@ -44,8 +44,8 @@
   const ellipse = {
     x: window.innerWidth / 2,
     y: window.innerHeight / 2,
-    rx: 60,
-    ry: 60,
+    rx: 70,
+    ry: 130,
     vx: 0,
     vy: 0,
   };
@@ -61,9 +61,9 @@
   });
 
   window.addEventListener('click', (e) => {
-    const dx = e.clientX - ellipse.x;
-    const dy = e.clientY - ellipse.y;
-    if (Math.hypot(dx, dy) <= ellipse.rx) {
+    const dx = (e.clientX - ellipse.x) / ellipse.rx;
+    const dy = (e.clientY - ellipse.y) / ellipse.ry;
+    if (dx * dx + dy * dy <= 1) {
       alert('you won');
     }
   });
@@ -115,57 +115,194 @@
     ctx.clearRect(0, 0, width, height);
 
     const scared = distToMouse < FEAR_RADIUS;
-    const r = ellipse.rx;
     const cx = ellipse.x;
     const cy = ellipse.y;
+    const ry = ellipse.ry;
 
-    // direction her eyes look — away from cursor when scared, otherwise idle
+    // Body anchor points (relative to center cy)
+    const headR = 38;
+    const headY = cy - ry * 0.62;
+    const neckY = headY + headR * 0.85;
+    const shoulderY = cy - ry * 0.32;
+    const waistY = cy - ry * 0.05;
+    const hipY = cy + ry * 0.25;
+    const kneeY = cy + ry * 0.6;
+    const footY = cy + ry * 0.95;
+
+    // Look direction
     let lookX = 0, lookY = 0;
     if (scared && distToMouse > 0.001) {
       lookX = (cx - mouse.x) / distToMouse;
       lookY = (cy - mouse.y) / distToMouse;
     }
 
-    // --- hair (back layer) ---
-    ctx.fillStyle = '#3b1f17';
+    // Run animation phase — faster cycle when scared
+    const speed = Math.hypot(ellipse.vx, ellipse.vy);
+    const phase = Date.now() / (scared ? 70 : 350);
+    const swing = Math.sin(phase) * (scared ? 0.55 : 0.1);
+
+    // Direction she's running (for leaning)
+    const moveDir = speed > 0.5 ? Math.atan2(ellipse.vy, ellipse.vx) : 0;
+    const lean = scared ? Math.cos(moveDir) * 0.08 : 0;
+
+    const SKIN = '#f4c2a1';
+    const SKIN_LIGHT = '#ffe4d6';
+    const HAIR = '#3b1f17';
+    const DRESS = scared ? '#fb7185' : '#f472b6';
+    const DRESS_DARK = scared ? '#e11d48' : '#db2777';
+
+    // ---- Legs ----
+    ctx.strokeStyle = SKIN;
+    ctx.lineWidth = 11;
+    ctx.lineCap = 'round';
+
+    const legSwing = Math.sin(phase) * (scared ? 14 : 2);
+    const leftFootX = cx - 12 + legSwing;
+    const rightFootX = cx + 12 - legSwing;
+
     ctx.beginPath();
-    ctx.arc(cx, cy - 4, r * 1.1, 0, Math.PI * 2);
+    ctx.moveTo(cx - 12, hipY);
+    ctx.quadraticCurveTo(cx - 14, kneeY, leftFootX, footY);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(cx + 12, hipY);
+    ctx.quadraticCurveTo(cx + 14, kneeY, rightFootX, footY);
+    ctx.stroke();
+
+    // Shoes
+    ctx.fillStyle = '#7c2d12';
+    ctx.beginPath();
+    ctx.ellipse(leftFootX, footY + 2, 10, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(rightFootX, footY + 2, 10, 6, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // long hair flowing below
+    // ---- Dress (skirt) ----
+    const skirtTopY = waistY;
+    const skirtBottomY = hipY + 18;
+    ctx.fillStyle = DRESS;
     ctx.beginPath();
-    ctx.moveTo(cx - r * 1.05, cy);
-    ctx.quadraticCurveTo(cx - r * 1.3, cy + r * 1.2, cx - r * 0.5, cy + r * 1.25);
-    ctx.quadraticCurveTo(cx, cy + r * 1.05, cx + r * 0.5, cy + r * 1.25);
-    ctx.quadraticCurveTo(cx + r * 1.3, cy + r * 1.2, cx + r * 1.05, cy);
+    ctx.moveTo(cx - 22, skirtTopY);
+    ctx.lineTo(cx + 22, skirtTopY);
+    ctx.lineTo(cx + 46, skirtBottomY);
+    ctx.quadraticCurveTo(cx, skirtBottomY + 8, cx - 46, skirtBottomY);
     ctx.closePath();
     ctx.fill();
 
-    // --- face ---
-    const skin = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
-    skin.addColorStop(0, '#ffe4d6');
-    skin.addColorStop(1, '#f4c2a1');
+    // Skirt hem shadow
+    ctx.fillStyle = DRESS_DARK;
+    ctx.beginPath();
+    ctx.moveTo(cx - 46, skirtBottomY);
+    ctx.quadraticCurveTo(cx, skirtBottomY + 8, cx + 46, skirtBottomY);
+    ctx.quadraticCurveTo(cx + 44, skirtBottomY + 5, cx + 42, skirtBottomY + 2);
+    ctx.quadraticCurveTo(cx, skirtBottomY + 10, cx - 42, skirtBottomY + 2);
+    ctx.quadraticCurveTo(cx - 44, skirtBottomY + 5, cx - 46, skirtBottomY);
+    ctx.closePath();
+    ctx.fill();
+
+    // ---- Torso (dress top) ----
+    ctx.fillStyle = DRESS;
+    ctx.beginPath();
+    ctx.moveTo(cx - 18, shoulderY);
+    ctx.quadraticCurveTo(cx - 26, waistY - 10, cx - 22, skirtTopY);
+    ctx.lineTo(cx + 22, skirtTopY);
+    ctx.quadraticCurveTo(cx + 26, waistY - 10, cx + 18, shoulderY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Collar trim
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(cx, shoulderY, 14, 5, 0, 0, Math.PI);
+    ctx.fill();
+
+    // ---- Arms ----
+    ctx.strokeStyle = SKIN;
+    ctx.lineWidth = 9;
+    ctx.lineCap = 'round';
+
+    // when scared, arms fly out wider; idle = relaxed at sides
+    const armBase = scared ? Math.PI * 0.55 : Math.PI * 0.5;
+    const armSpread = scared ? 0.5 : 0.15;
+    const armLen = 48;
+
+    const lShoulderX = cx - 18;
+    const lArmAngle = armBase + armSpread + swing;
+    const lElbowX = lShoulderX + Math.cos(Math.PI - lArmAngle * 0.6) * armLen * 0.5;
+    const lElbowY = shoulderY + Math.sin(lArmAngle * 0.7) * armLen * 0.5;
+    const lHandX = lShoulderX - Math.sin(lArmAngle) * armLen;
+    const lHandY = shoulderY + Math.cos(lArmAngle) * armLen;
+
+    ctx.beginPath();
+    ctx.moveTo(lShoulderX, shoulderY);
+    ctx.quadraticCurveTo(lElbowX, lElbowY, lHandX, lHandY);
+    ctx.stroke();
+
+    const rShoulderX = cx + 18;
+    const rArmAngle = armBase + armSpread - swing;
+    const rElbowX = rShoulderX - Math.cos(Math.PI - rArmAngle * 0.6) * armLen * 0.5;
+    const rElbowY = shoulderY + Math.sin(rArmAngle * 0.7) * armLen * 0.5;
+    const rHandX = rShoulderX + Math.sin(rArmAngle) * armLen;
+    const rHandY = shoulderY + Math.cos(rArmAngle) * armLen;
+
+    ctx.beginPath();
+    ctx.moveTo(rShoulderX, shoulderY);
+    ctx.quadraticCurveTo(rElbowX, rElbowY, rHandX, rHandY);
+    ctx.stroke();
+
+    // Hands
+    ctx.fillStyle = SKIN_LIGHT;
+    ctx.beginPath();
+    ctx.arc(lHandX, lHandY, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(rHandX, rHandY, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ---- Neck ----
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(cx - 6, neckY, 12, shoulderY - neckY + 2);
+
+    // ---- Head ----
+    // Simple bob: hair cap on top + clean shoulder-length silhouette + straight bangs
+    ctx.fillStyle = HAIR;
+
+    // Back hair — clean bob, shoulder length, no waves
+    ctx.beginPath();
+    ctx.moveTo(cx - headR * 1.0, headY - headR * 0.2);
+    ctx.quadraticCurveTo(cx - headR * 1.05, headY - headR * 1.05, cx, headY - headR * 1.1);
+    ctx.quadraticCurveTo(cx + headR * 1.05, headY - headR * 1.05, cx + headR * 1.0, headY - headR * 0.2);
+    ctx.lineTo(cx + headR * 1.05, shoulderY + 8);
+    ctx.quadraticCurveTo(cx, shoulderY + 4, cx - headR * 1.05, shoulderY + 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Face
+    const skin = ctx.createRadialGradient(cx, headY, headR * 0.2, cx, headY, headR);
+    skin.addColorStop(0, SKIN_LIGHT);
+    skin.addColorStop(1, SKIN);
     ctx.fillStyle = skin;
     ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.arc(cx, headY, headR, 0, Math.PI * 2);
     ctx.fill();
 
-    // --- hair bangs in front ---
-    ctx.fillStyle = '#3b1f17';
+    // Bangs — simple, straight across with a slight rounded edge
+    ctx.fillStyle = HAIR;
     ctx.beginPath();
-    ctx.moveTo(cx - r * 0.95, cy - r * 0.15);
-    ctx.quadraticCurveTo(cx - r * 0.7, cy - r * 1.05, cx - r * 0.1, cy - r * 0.55);
-    ctx.quadraticCurveTo(cx + r * 0.2, cy - r * 0.2, cx + r * 0.55, cy - r * 0.7);
-    ctx.quadraticCurveTo(cx + r * 0.85, cy - r * 1.0, cx + r * 0.98, cy - r * 0.2);
-    ctx.quadraticCurveTo(cx + r * 0.7, cy - r * 0.55, cx + r * 0.3, cy - r * 0.4);
-    ctx.quadraticCurveTo(cx - r * 0.2, cy - r * 0.25, cx - r * 0.95, cy - r * 0.15);
+    ctx.moveTo(cx - headR * 0.95, headY - headR * 0.55);
+    ctx.quadraticCurveTo(cx - headR * 0.95, headY - headR * 1.0, cx, headY - headR * 1.05);
+    ctx.quadraticCurveTo(cx + headR * 0.95, headY - headR * 1.0, cx + headR * 0.95, headY - headR * 0.55);
+    ctx.quadraticCurveTo(cx + headR * 0.5, headY - headR * 0.25, cx, headY - headR * 0.3);
+    ctx.quadraticCurveTo(cx - headR * 0.5, headY - headR * 0.25, cx - headR * 0.95, headY - headR * 0.55);
     ctx.closePath();
     ctx.fill();
 
-    // --- hair bow on the side ---
-    const bowX = cx + r * 0.85;
-    const bowY = cy - r * 0.55;
-    ctx.fillStyle = scared ? '#fb7185' : '#f472b6';
+    // Side bow
+    const bowX = cx + headR * 0.85;
+    const bowY = headY - headR * 0.55;
+    ctx.fillStyle = scared ? '#fb7185' : '#ec4899';
     ctx.beginPath();
     ctx.ellipse(bowX - 8, bowY, 10, 7, -0.4, 0, Math.PI * 2);
     ctx.fill();
@@ -176,22 +313,20 @@
     ctx.arc(bowX, bowY, 4, 0, Math.PI * 2);
     ctx.fill();
 
-    // --- eyes ---
-    const eyeY = cy + r * 0.05;
-    const eyeOffX = r * 0.32;
-    const eyeW = r * 0.16;
-    const eyeH = scared ? r * 0.08 : r * 0.22;
+    // Eyes
+    const eyeY = headY + headR * 0.05;
+    const eyeOffX = headR * 0.32;
+    const eyeW = headR * 0.16;
+    const eyeH = scared ? headR * 0.08 : headR * 0.22;
 
     for (const side of [-1, 1]) {
       const ex = cx + side * eyeOffX;
-      // eye white
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
       ctx.ellipse(ex, eyeY, eyeW, eyeH, 0, 0, Math.PI * 2);
       ctx.fill();
 
       if (scared) {
-        // worried squint line
         ctx.strokeStyle = '#2b1810';
         ctx.lineWidth = 2.5;
         ctx.beginPath();
@@ -199,26 +334,22 @@
         ctx.quadraticCurveTo(ex, eyeY - 3, ex + eyeW, eyeY);
         ctx.stroke();
       } else {
-        // iris
         const irisX = ex + lookX * 3;
         const irisY = eyeY + lookY * 3;
         ctx.fillStyle = '#5b8def';
         ctx.beginPath();
         ctx.arc(irisX, irisY, eyeW * 0.75, 0, Math.PI * 2);
         ctx.fill();
-        // pupil
         ctx.fillStyle = '#1a1a2e';
         ctx.beginPath();
         ctx.arc(irisX, irisY, eyeW * 0.4, 0, Math.PI * 2);
         ctx.fill();
-        // shine
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.arc(irisX - eyeW * 0.25, irisY - eyeW * 0.3, eyeW * 0.22, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // eyelashes
       ctx.strokeStyle = '#2b1810';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -231,29 +362,27 @@
       ctx.stroke();
     }
 
-    // --- blush ---
+    // Blush
     ctx.fillStyle = scared ? 'rgba(244, 63, 94, 0.55)' : 'rgba(244, 114, 182, 0.45)';
     ctx.beginPath();
-    ctx.ellipse(cx - r * 0.45, cy + r * 0.35, r * 0.16, r * 0.1, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx - headR * 0.45, headY + headR * 0.35, headR * 0.16, headR * 0.1, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(cx + r * 0.45, cy + r * 0.35, r * 0.16, r * 0.1, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + headR * 0.45, headY + headR * 0.35, headR * 0.16, headR * 0.1, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // --- mouth ---
+    // Mouth
     ctx.strokeStyle = '#c2185b';
     ctx.fillStyle = '#e91e63';
     ctx.lineWidth = 2;
     if (scared) {
-      // little "o" of surprise
       ctx.beginPath();
-      ctx.ellipse(cx, cy + r * 0.55, r * 0.07, r * 0.1, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx, headY + headR * 0.55, headR * 0.07, headR * 0.1, 0, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      // gentle smile
       ctx.beginPath();
-      ctx.moveTo(cx - r * 0.18, cy + r * 0.5);
-      ctx.quadraticCurveTo(cx, cy + r * 0.68, cx + r * 0.18, cy + r * 0.5);
+      ctx.moveTo(cx - headR * 0.18, headY + headR * 0.5);
+      ctx.quadraticCurveTo(cx, headY + headR * 0.68, cx + headR * 0.18, headY + headR * 0.5);
       ctx.stroke();
     }
   }
