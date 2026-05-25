@@ -324,9 +324,9 @@
 
   function drawFoldedUmbrella(centerX, baseY, lean, brightness) {
     // A closed parasol leaning upright against the bench backrest.
-    const fabric     = lerpC([30, 50, 110],  [12, 18, 45],  1 - brightness);
-    const fabricDark = lerpC([18, 30, 70],   [6, 10, 25],   1 - brightness);
-    const tie        = lerpC([55, 80, 145],  [22, 32, 60],  1 - brightness);
+    const fabric     = lerpC([240, 180, 40],  [110, 80, 20],  1 - brightness);
+    const fabricDark = lerpC([180, 120, 20],  [75, 50, 12],   1 - brightness);
+    const tie        = lerpC([200, 145, 30],  [85, 60, 14],   1 - brightness);
     const wood       = lerpC([110, 75, 40],  [45, 28, 15],  1 - brightness);
     const woodDark   = lerpC([70, 45, 22],   [25, 16, 8],   1 - brightness);
 
@@ -397,26 +397,29 @@
   function drawOpenPortableUmbrella(handX, handY, brightness) {
     if (weather !== 'rainy' && weather !== 'stormy') return;
 
-    const fabric   = lerpC([30, 50, 130],   [12, 20, 55],  1 - brightness);
-    const fabDark  = lerpC([15, 25, 70],    [5, 8, 25],    1 - brightness);
-    const pole     = lerpC([110, 75, 40],   [45, 28, 15],  1 - brightness);
-    const poleDark = lerpC([70, 45, 22],    [25, 16, 8],   1 - brightness);
+    const fabric    = lerpC([245, 190, 50],   [115, 85, 22],  1 - brightness);
+    const fabDark   = lerpC([170, 115, 18],   [70, 48, 10],   1 - brightness);
+    const fabUnder  = lerpC([195, 140, 25],   [82, 58, 13],   1 - brightness);
+    const fabHigh   = [255, 230, 140];
+    const pole      = lerpC([110, 75, 40],   [45, 28, 15],  1 - brightness);
+    const poleDark  = lerpC([70, 45, 22],    [25, 16, 8],   1 - brightness);
 
     ctx.save();
     ctx.translate(handX, handY);
 
-    const halfCW = 60;       // canopy half width
-    const eaveY = -55;       // canopy bottom edge above hand
-    const peakY = -100;      // canopy top above hand
+    const halfCW = 92;       // canopy half-width — total 184px, well wider than her ~50 body
+    const eaveY = -58;       // canopy bottom outer edge above hand
+    const peakY = -108;      // canopy top above hand
+    const domeH = eaveY - peakY;
     const panels = 8;
-    const scallopDepth = 7;
+    const scallopDepth = 9;
     const poleW = 3;
 
-    // Pole from hand up to the canopy peak
+    // Pole from hand up to canopy peak
     ctx.fillStyle = rgb(pole);
     ctx.fillRect(-poleW / 2, peakY, poleW, 0 - peakY);
 
-    // Curved J-hook handle just below the hand
+    // J-hook handle just below the hand
     ctx.strokeStyle = rgb(pole);
     ctx.lineWidth = 3;
     ctx.lineCap = 'round';
@@ -426,41 +429,70 @@
     ctx.quadraticCurveTo(8, 14, 8, 6);
     ctx.stroke();
 
-    // Canopy as 8 flat triangular panels with shading
-    for (let i = 0; i < panels; i++) {
-      const t1 = i / panels;
-      const t2 = (i + 1) / panels;
-      const xL = -halfCW + t1 * 2 * halfCW;
-      const xR = -halfCW + t2 * 2 * halfCW;
-      const tMid = (t1 + t2) / 2;
-      const edgeness = Math.abs(tMid - 0.5) * 2;
-      const shade = 1 - edgeness * 0.30;
-      const c = [
-        Math.floor(fabric[0] * shade),
-        Math.floor(fabric[1] * shade),
-        Math.floor(fabric[2] * shade),
-      ];
-      ctx.fillStyle = rgb(c);
-      ctx.beginPath();
-      ctx.moveTo(0, peakY);
-      ctx.lineTo(xL, eaveY);
-      const midX = (xL + xR) / 2;
-      ctx.quadraticCurveTo(midX, eaveY + scallopDepth, xR, eaveY);
-      ctx.closePath();
-      ctx.fill();
-    }
+    // Underside band — suggests the canopy curves inward at the rim
+    ctx.fillStyle = rgb(fabUnder);
+    ctx.beginPath();
+    ctx.moveTo(-halfCW, eaveY);
+    ctx.quadraticCurveTo(0, eaveY + 9, halfCW, eaveY);
+    ctx.quadraticCurveTo(0, eaveY + 2, -halfCW, eaveY);
+    ctx.closePath();
+    ctx.fill();
 
-    // Rib lines
+    // Rounded dome (half-ellipse) with scalloped bottom edge
+    ctx.fillStyle = rgb(fabric);
+    ctx.beginPath();
+    ctx.moveTo(-halfCW, eaveY);
+    ctx.ellipse(0, eaveY, halfCW, domeH, 0, Math.PI, 2 * Math.PI);
+    for (let i = panels; i > 0; i--) {
+      const t1 = i / panels;
+      const t2 = (i - 1) / panels;
+      const xR = -halfCW + t1 * 2 * halfCW;
+      const xL = -halfCW + t2 * 2 * halfCW;
+      const midX = (xL + xR) / 2;
+      ctx.quadraticCurveTo(midX, eaveY + scallopDepth, xL, eaveY);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    // Soft highlight on the upper-left of the dome (clipped to the dome shape)
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(-halfCW, eaveY);
+    ctx.ellipse(0, eaveY, halfCW, domeH, 0, Math.PI, 2 * Math.PI);
+    ctx.lineTo(halfCW, eaveY);
+    ctx.closePath();
+    ctx.clip();
+    const hi = ctx.createRadialGradient(
+      -halfCW * 0.35, peakY + domeH * 0.35, 4,
+      -halfCW * 0.35, peakY + domeH * 0.35, halfCW * 0.75
+    );
+    hi.addColorStop(0, `rgba(${fabHigh[0]}, ${fabHigh[1]}, ${fabHigh[2]}, 0.45)`);
+    hi.addColorStop(1, `rgba(${fabHigh[0]}, ${fabHigh[1]}, ${fabHigh[2]}, 0)`);
+    ctx.fillStyle = hi;
+    ctx.fillRect(-halfCW, peakY - 4, halfCW * 2, domeH + 4);
+    ctx.restore();
+
+    // Curved rib lines suggesting panels; each rib bulges outward along the dome
     ctx.strokeStyle = rgb(fabDark);
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 0.9;
     for (let i = 0; i <= panels; i++) {
       const t = i / panels;
       const x = -halfCW + t * 2 * halfCW;
+      const cpX = x * 0.55;
+      const cpY = peakY + domeH * 0.45;
       ctx.beginPath();
       ctx.moveTo(0, peakY);
-      ctx.lineTo(x, eaveY);
+      ctx.quadraticCurveTo(cpX, cpY, x, eaveY);
       ctx.stroke();
     }
+
+    // Rim shadow tucked under the canopy edge
+    ctx.strokeStyle = rgb(fabDark);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-halfCW, eaveY);
+    ctx.quadraticCurveTo(0, eaveY + 5, halfCW, eaveY);
+    ctx.stroke();
 
     // Finial
     ctx.fillStyle = rgb(poleDark);
