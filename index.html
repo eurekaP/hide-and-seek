@@ -369,24 +369,25 @@
     const elapsed = (performance.now() - startTime) / 1000;
     return Math.floor(elapsed / CYCLE_SECONDS + 0.35);
   }
-  // Deterministic per-day hash — stable within a day, unpredictable across days
-  function hashDay(day, salt) {
-    let h = ((day + 1) * 2654435761) ^ (salt * 374761393);
-    h = Math.imul(h ^ (h >>> 15), 1597334677);
-    h = Math.imul(h ^ (h >>> 13), 2246822519);
-    h = h ^ (h >>> 16);
-    return (h >>> 0);
-  }
-  function currentDress() {
-    return DRESS_PALETTE[hashDay(dayIndex(), 1) % DRESS_PALETTE.length];
-  }
 
   const OUTFIT_TYPES = [
     'bell', 'gown', 'sundress', 'tee-skirt', 'overalls', 'shorts-tank', 'polka', 'sailor',
   ];
-  function currentOutfitType() {
-    return OUTFIT_TYPES[hashDay(dayIndex(), 2) % OUTFIT_TYPES.length];
+
+  // Roll a fresh outfit and color each new day; keep them stable within the day
+  let _outfitDay = -1;
+  let _dressIdx = 0;
+  let _outfitIdx = 0;
+  function maybeRollOutfit() {
+    const d = dayIndex();
+    if (d !== _outfitDay) {
+      _dressIdx = Math.floor(Math.random() * DRESS_PALETTE.length);
+      _outfitIdx = Math.floor(Math.random() * OUTFIT_TYPES.length);
+      _outfitDay = d;
+    }
   }
+  function currentDress() { maybeRollOutfit(); return DRESS_PALETTE[_dressIdx]; }
+  function currentOutfitType() { maybeRollOutfit(); return OUTFIT_TYPES[_outfitIdx]; }
 
   // -------- Weather --------
   let weather = 'sunny';
