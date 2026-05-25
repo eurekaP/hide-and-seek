@@ -365,10 +365,22 @@
     { normal: '#f87171', dark: '#dc2626', scared: '#fca5a5', scaredDark: '#b91c1c', bow: '#ef4444' }, // coral
     { normal: '#fb923c', dark: '#ea580c', scared: '#fdba74', scaredDark: '#c2410c', bow: '#f97316' }, // tangerine
   ];
-  function currentDress() {
+  function dayIndex() {
     const elapsed = (performance.now() - startTime) / 1000;
-    const day = Math.floor(elapsed / CYCLE_SECONDS + 0.35);
-    return DRESS_PALETTE[((day % DRESS_PALETTE.length) + DRESS_PALETTE.length) % DRESS_PALETTE.length];
+    return Math.floor(elapsed / CYCLE_SECONDS + 0.35);
+  }
+  function currentDress() {
+    const i = ((dayIndex() % DRESS_PALETTE.length) + DRESS_PALETTE.length) % DRESS_PALETTE.length;
+    return DRESS_PALETTE[i];
+  }
+
+  const OUTFIT_TYPES = [
+    'bell', 'gown', 'sundress', 'tee-skirt', 'overalls', 'shorts-tank', 'polka', 'sailor',
+  ];
+  function currentOutfitType() {
+    // Offset by 3 so the outfit cycle doesn't perfectly track the color cycle
+    const i = ((dayIndex() + 3) % OUTFIT_TYPES.length + OUTFIT_TYPES.length) % OUTFIT_TYPES.length;
+    return OUTFIT_TYPES[i];
   }
 
   // -------- Weather --------
@@ -927,102 +939,396 @@
     ctx.closePath();
     ctx.fill();
 
-    // ---- Legs ----
-    ctx.strokeStyle = SKIN;
-    ctx.lineWidth = 11;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
+    // ---- Leg path coords (shared between skin legs, pants overlay, and shoes) ----
+    const groundLevel = height * 0.82;
+    let legGeom;
     if (isSitting) {
-      // Knees and feet together — modest seated pose
-      const groundLevel = height * 0.82;
       const kneeY_sit = hipY + 10;
-      const kneeX_L = cx - 7;
-      const kneeX_R = cx + 7;
-
-      // Thighs angle inward from hips to knees, then calves drop straight down
-      ctx.beginPath();
-      ctx.moveTo(cx - 12, hipY);
-      ctx.lineTo(kneeX_L, kneeY_sit);
-      ctx.lineTo(kneeX_L, groundLevel);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(cx + 12, hipY);
-      ctx.lineTo(kneeX_R, kneeY_sit);
-      ctx.lineTo(kneeX_R, groundLevel);
-      ctx.stroke();
-
-      // Shoes — side by side, pointing forward
-      ctx.fillStyle = '#7c2d12';
-      ctx.beginPath();
-      ctx.ellipse(kneeX_L - 1, groundLevel + 2, 10, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.ellipse(kneeX_R + 1, groundLevel + 2, 10, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
+      legGeom = {
+        sitting: true,
+        kneeY_sit,
+        kneeX_L: cx - 7,
+        kneeX_R: cx + 7,
+        shoeLX: cx - 8,
+        shoeRX: cx + 8,
+        shoeY: groundLevel,
+      };
     } else {
-      // Standing / running
       const legSwing = Math.sin(phase) * (scared ? 14 : walking ? 7 : 2);
-      const leftFootX = cx - 12 + legSwing;
-      const rightFootX = cx + 12 - legSwing;
+      legGeom = {
+        sitting: false,
+        kneeY,
+        leftFootX: cx - 12 + legSwing,
+        rightFootX: cx + 12 - legSwing,
+        footY,
+        shoeY: footY,
+        shoeLX: cx - 12 + legSwing,
+        shoeRX: cx + 12 - legSwing,
+      };
+    }
 
-      ctx.beginPath();
-      ctx.moveTo(cx - 12, hipY);
-      ctx.quadraticCurveTo(cx - 14, kneeY, leftFootX, footY);
-      ctx.stroke();
+    function strokeLegPath(color, lineW) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineW;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      if (legGeom.sitting) {
+        ctx.beginPath();
+        ctx.moveTo(cx - 12, hipY);
+        ctx.lineTo(legGeom.kneeX_L, legGeom.kneeY_sit);
+        ctx.lineTo(legGeom.kneeX_L, groundLevel);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx + 12, hipY);
+        ctx.lineTo(legGeom.kneeX_R, legGeom.kneeY_sit);
+        ctx.lineTo(legGeom.kneeX_R, groundLevel);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(cx - 12, hipY);
+        ctx.quadraticCurveTo(cx - 14, legGeom.kneeY, legGeom.leftFootX, legGeom.footY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx + 12, hipY);
+        ctx.quadraticCurveTo(cx + 14, legGeom.kneeY, legGeom.rightFootX, legGeom.footY);
+        ctx.stroke();
+      }
+    }
 
-      ctx.beginPath();
-      ctx.moveTo(cx + 12, hipY);
-      ctx.quadraticCurveTo(cx + 14, kneeY, rightFootX, footY);
-      ctx.stroke();
+    // Skin legs (base layer; pants will overlay this for some outfits)
+    strokeLegPath(SKIN, 11);
 
-      ctx.fillStyle = '#7c2d12';
+    // ---- Outfit ----
+    const outfit = currentOutfitType();
+
+    // Helper: bell-shaped skirt (skirtBottom > skirtTop)
+    function drawBellSkirt(skirtBottomY, hemSpread, color, colorDark) {
+      const skirtTopY = waistY;
+      ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.ellipse(leftFootX, footY + 2, 10, 6, 0, 0, Math.PI * 2);
+      ctx.moveTo(cx - 22, skirtTopY);
+      ctx.lineTo(cx + 22, skirtTopY);
+      ctx.lineTo(cx + hemSpread, skirtBottomY);
+      ctx.quadraticCurveTo(cx, skirtBottomY + 8, cx - hemSpread, skirtBottomY);
+      ctx.closePath();
       ctx.fill();
+      ctx.fillStyle = colorDark;
       ctx.beginPath();
-      ctx.ellipse(rightFootX, footY + 2, 10, 6, 0, 0, Math.PI * 2);
+      ctx.moveTo(cx - hemSpread, skirtBottomY);
+      ctx.quadraticCurveTo(cx, skirtBottomY + 8, cx + hemSpread, skirtBottomY);
+      ctx.quadraticCurveTo(cx + hemSpread - 2, skirtBottomY + 5, cx + hemSpread - 4, skirtBottomY + 2);
+      ctx.quadraticCurveTo(cx, skirtBottomY + 10, cx - hemSpread + 4, skirtBottomY + 2);
+      ctx.quadraticCurveTo(cx - hemSpread + 2, skirtBottomY + 5, cx - hemSpread, skirtBottomY);
+      ctx.closePath();
       ctx.fill();
     }
 
-    // ---- Dress (skirt) ----
-    const skirtTopY = waistY;
-    const skirtBottomY = hipY + 18;
-    ctx.fillStyle = DRESS;
-    ctx.beginPath();
-    ctx.moveTo(cx - 22, skirtTopY);
-    ctx.lineTo(cx + 22, skirtTopY);
-    ctx.lineTo(cx + 46, skirtBottomY);
-    ctx.quadraticCurveTo(cx, skirtBottomY + 8, cx - 46, skirtBottomY);
-    ctx.closePath();
-    ctx.fill();
+    function drawFittedBodice(color) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(cx - 18, shoulderY);
+      ctx.quadraticCurveTo(cx - 26, waistY - 10, cx - 22, waistY);
+      ctx.lineTo(cx + 22, waistY);
+      ctx.quadraticCurveTo(cx + 26, waistY - 10, cx + 18, shoulderY);
+      ctx.closePath();
+      ctx.fill();
+    }
 
-    // Skirt hem shadow
-    ctx.fillStyle = DRESS_DARK;
-    ctx.beginPath();
-    ctx.moveTo(cx - 46, skirtBottomY);
-    ctx.quadraticCurveTo(cx, skirtBottomY + 8, cx + 46, skirtBottomY);
-    ctx.quadraticCurveTo(cx + 44, skirtBottomY + 5, cx + 42, skirtBottomY + 2);
-    ctx.quadraticCurveTo(cx, skirtBottomY + 10, cx - 42, skirtBottomY + 2);
-    ctx.quadraticCurveTo(cx - 44, skirtBottomY + 5, cx - 46, skirtBottomY);
-    ctx.closePath();
-    ctx.fill();
+    function drawWhiteCollarHalf() {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(cx, shoulderY, 14, 5, 0, 0, Math.PI);
+      ctx.fill();
+    }
 
-    // ---- Torso (dress top) ----
-    ctx.fillStyle = DRESS;
-    ctx.beginPath();
-    ctx.moveTo(cx - 18, shoulderY);
-    ctx.quadraticCurveTo(cx - 26, waistY - 10, cx - 22, skirtTopY);
-    ctx.lineTo(cx + 22, skirtTopY);
-    ctx.quadraticCurveTo(cx + 26, waistY - 10, cx + 18, shoulderY);
-    ctx.closePath();
-    ctx.fill();
+    switch (outfit) {
+      case 'bell': {
+        drawBellSkirt(hipY + 18, 46, DRESS, DRESS_DARK);
+        drawFittedBodice(DRESS);
+        drawWhiteCollarHalf();
+        break;
+      }
 
-    // Collar trim
-    ctx.fillStyle = '#ffffff';
+      case 'gown': {
+        // Floor-length straight gown reaching just above the feet
+        const hem = groundLevel - 6;
+        const top = waistY;
+        ctx.fillStyle = DRESS;
+        ctx.beginPath();
+        ctx.moveTo(cx - 22, top);
+        ctx.quadraticCurveTo(cx - 28, (top + hem) / 2, cx - 34, hem);
+        ctx.quadraticCurveTo(cx, hem + 6, cx + 34, hem);
+        ctx.quadraticCurveTo(cx + 28, (top + hem) / 2, cx + 22, top);
+        ctx.closePath();
+        ctx.fill();
+        // hem shadow
+        ctx.fillStyle = DRESS_DARK;
+        ctx.beginPath();
+        ctx.moveTo(cx - 34, hem);
+        ctx.quadraticCurveTo(cx, hem + 6, cx + 34, hem);
+        ctx.quadraticCurveTo(cx, hem + 2, cx - 34, hem);
+        ctx.closePath();
+        ctx.fill();
+        drawFittedBodice(DRESS);
+        // sweetheart neckline trim
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(cx - 14, shoulderY);
+        ctx.quadraticCurveTo(cx, shoulderY + 8, cx + 14, shoulderY);
+        ctx.quadraticCurveTo(cx + 12, shoulderY - 2, cx - 12, shoulderY - 2);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+
+      case 'sundress': {
+        drawBellSkirt(hipY + 14, 42, DRESS, DRESS_DARK);
+        // Bodice sits below the shoulders, leaving shoulders bare
+        const bodTop = shoulderY + 10;
+        ctx.fillStyle = DRESS;
+        ctx.beginPath();
+        ctx.moveTo(cx - 20, bodTop);
+        ctx.quadraticCurveTo(cx - 24, waistY - 6, cx - 22, waistY);
+        ctx.lineTo(cx + 22, waistY);
+        ctx.quadraticCurveTo(cx + 24, waistY - 6, cx + 20, bodTop);
+        ctx.quadraticCurveTo(cx, bodTop + 4, cx - 20, bodTop);
+        ctx.closePath();
+        ctx.fill();
+        // Thin straps
+        ctx.strokeStyle = DRESS;
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx - 14, bodTop);
+        ctx.lineTo(cx - 14, shoulderY);
+        ctx.moveTo(cx + 14, bodTop);
+        ctx.lineTo(cx + 14, shoulderY);
+        ctx.stroke();
+        break;
+      }
+
+      case 'tee-skirt': {
+        // Pleated mini skirt (short, with vertical pleat lines)
+        const skirtBottomY = hipY + 12;
+        ctx.fillStyle = DRESS_DARK;
+        ctx.beginPath();
+        ctx.moveTo(cx - 22, waistY);
+        ctx.lineTo(cx + 22, waistY);
+        ctx.lineTo(cx + 38, skirtBottomY);
+        ctx.lineTo(cx - 38, skirtBottomY);
+        ctx.closePath();
+        ctx.fill();
+        // pleat lines
+        ctx.strokeStyle = DRESS;
+        ctx.lineWidth = 1.5;
+        for (let i = -2; i <= 2; i++) {
+          const topX = cx + i * 9;
+          const botX = cx + i * 15;
+          ctx.beginPath();
+          ctx.moveTo(topX, waistY + 2);
+          ctx.lineTo(botX, skirtBottomY);
+          ctx.stroke();
+        }
+        // Tee: rounded boxy shape from neck to waist with short sleeves
+        ctx.fillStyle = DRESS;
+        ctx.beginPath();
+        ctx.moveTo(cx - 24, shoulderY + 2);
+        ctx.quadraticCurveTo(cx - 26, waistY - 4, cx - 24, waistY + 2);
+        ctx.lineTo(cx + 24, waistY + 2);
+        ctx.quadraticCurveTo(cx + 26, waistY - 4, cx + 24, shoulderY + 2);
+        ctx.quadraticCurveTo(cx, shoulderY - 4, cx - 24, shoulderY + 2);
+        ctx.closePath();
+        ctx.fill();
+        // Short sleeves
+        ctx.beginPath();
+        ctx.ellipse(cx - 22, shoulderY + 6, 9, 8, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(cx + 22, shoulderY + 6, 9, 8, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        // round neckline
+        ctx.fillStyle = SKIN;
+        ctx.beginPath();
+        ctx.ellipse(cx, shoulderY + 2, 8, 4, 0, 0, Math.PI);
+        ctx.fill();
+        break;
+      }
+
+      case 'overalls': {
+        // Long pants over legs (denim color uses DRESS as the dye)
+        strokeLegPath(DRESS, 18);
+        // Inseam line
+        ctx.strokeStyle = DRESS_DARK;
+        ctx.lineWidth = 1.5;
+        if (!legGeom.sitting) {
+          ctx.beginPath();
+          ctx.moveTo(cx, hipY + 4);
+          ctx.lineTo(cx, footY - 6);
+          ctx.stroke();
+        }
+        // Bib top (chest panel)
+        ctx.fillStyle = DRESS;
+        ctx.beginPath();
+        ctx.moveTo(cx - 16, shoulderY + 12);
+        ctx.lineTo(cx + 16, shoulderY + 12);
+        ctx.lineTo(cx + 22, waistY + 2);
+        ctx.lineTo(cx - 22, waistY + 2);
+        ctx.closePath();
+        ctx.fill();
+        // Two straps from bib to shoulders
+        ctx.strokeStyle = DRESS;
+        ctx.lineWidth = 5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx - 11, shoulderY + 12);
+        ctx.lineTo(cx - 13, shoulderY - 2);
+        ctx.moveTo(cx + 11, shoulderY + 12);
+        ctx.lineTo(cx + 13, shoulderY - 2);
+        ctx.stroke();
+        // Button accents
+        ctx.fillStyle = '#fde047';
+        ctx.beginPath();
+        ctx.arc(cx - 11, shoulderY + 13, 2, 0, Math.PI * 2);
+        ctx.arc(cx + 11, shoulderY + 13, 2, 0, Math.PI * 2);
+        ctx.fill();
+        // White tee peeking out under the bib
+        ctx.fillStyle = '#f3f4f6';
+        ctx.beginPath();
+        ctx.moveTo(cx - 22, shoulderY + 2);
+        ctx.lineTo(cx + 22, shoulderY + 2);
+        ctx.lineTo(cx + 22, shoulderY + 12);
+        ctx.lineTo(cx - 22, shoulderY + 12);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+
+      case 'shorts-tank': {
+        // Shorts: pants overlay that only reaches mid-thigh
+        ctx.strokeStyle = DRESS_DARK;
+        ctx.lineWidth = 18;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (legGeom.sitting) {
+          ctx.beginPath();
+          ctx.moveTo(cx - 12, hipY);
+          ctx.lineTo(legGeom.kneeX_L, legGeom.kneeY_sit);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(cx + 12, hipY);
+          ctx.lineTo(legGeom.kneeX_R, legGeom.kneeY_sit);
+          ctx.stroke();
+        } else {
+          // Up to roughly knee
+          ctx.beginPath();
+          ctx.moveTo(cx - 12, hipY);
+          ctx.quadraticCurveTo(cx - 14, legGeom.kneeY - 4, cx - 13, legGeom.kneeY - 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(cx + 12, hipY);
+          ctx.quadraticCurveTo(cx + 14, legGeom.kneeY - 4, cx + 13, legGeom.kneeY - 2);
+          ctx.stroke();
+        }
+        // Tank top (DRESS color), narrower armholes
+        ctx.fillStyle = DRESS;
+        ctx.beginPath();
+        ctx.moveTo(cx - 14, shoulderY + 2);
+        ctx.quadraticCurveTo(cx - 22, waistY - 8, cx - 22, waistY + 2);
+        ctx.lineTo(cx + 22, waistY + 2);
+        ctx.quadraticCurveTo(cx + 22, waistY - 8, cx + 14, shoulderY + 2);
+        ctx.quadraticCurveTo(cx, shoulderY + 8, cx - 14, shoulderY + 2);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+
+      case 'polka': {
+        drawBellSkirt(hipY + 18, 46, DRESS, DRESS_DARK);
+        drawFittedBodice(DRESS);
+        drawWhiteCollarHalf();
+        // White polka dots scattered across bodice + skirt
+        ctx.fillStyle = '#ffffff';
+        const dots = [
+          [-12, shoulderY + 10], [10, waistY - 14], [-6, waistY - 4],
+          [-30, hipY + 4], [-10, hipY + 8], [12, hipY + 2], [30, hipY + 8],
+          [-22, hipY + 22], [4, hipY + 18], [24, hipY + 22],
+        ];
+        for (const [dx, dy] of dots) {
+          ctx.beginPath();
+          ctx.arc(cx + dx, dy, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        break;
+      }
+
+      case 'sailor': {
+        // Pleated skirt
+        const skirtBottomY = hipY + 22;
+        ctx.fillStyle = DRESS;
+        ctx.beginPath();
+        ctx.moveTo(cx - 22, waistY);
+        ctx.lineTo(cx + 22, waistY);
+        ctx.lineTo(cx + 44, skirtBottomY);
+        ctx.lineTo(cx - 44, skirtBottomY);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = DRESS_DARK;
+        ctx.lineWidth = 1.5;
+        for (let i = -3; i <= 3; i++) {
+          const topX = cx + i * 7;
+          const botX = cx + i * 14;
+          ctx.beginPath();
+          ctx.moveTo(topX, waistY + 2);
+          ctx.lineTo(botX, skirtBottomY);
+          ctx.stroke();
+        }
+        // Bodice
+        drawFittedBodice(DRESS);
+        // Sailor collar (square back + V at front)
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(cx - 22, shoulderY + 2);
+        ctx.lineTo(cx + 22, shoulderY + 2);
+        ctx.lineTo(cx + 18, shoulderY + 12);
+        ctx.lineTo(cx, shoulderY + 22);
+        ctx.lineTo(cx - 18, shoulderY + 12);
+        ctx.closePath();
+        ctx.fill();
+        // Tie under V
+        ctx.fillStyle = DRESS_DARK;
+        ctx.beginPath();
+        ctx.moveTo(cx - 4, shoulderY + 20);
+        ctx.lineTo(cx + 4, shoulderY + 20);
+        ctx.lineTo(cx + 2, shoulderY + 28);
+        ctx.lineTo(cx - 2, shoulderY + 28);
+        ctx.closePath();
+        ctx.fill();
+        // Two stripes on collar edge
+        ctx.strokeStyle = DRESS;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - 20, shoulderY + 4);
+        ctx.lineTo(cx + 20, shoulderY + 4);
+        ctx.moveTo(cx - 20, shoulderY + 7);
+        ctx.lineTo(cx + 20, shoulderY + 7);
+        ctx.stroke();
+        break;
+      }
+
+      default: {
+        drawBellSkirt(hipY + 18, 46, DRESS, DRESS_DARK);
+        drawFittedBodice(DRESS);
+        drawWhiteCollarHalf();
+      }
+    }
+
+    // Shoes drawn last so pants/skirt don't cover them
+    ctx.fillStyle = '#7c2d12';
     ctx.beginPath();
-    ctx.ellipse(cx, shoulderY, 14, 5, 0, 0, Math.PI);
+    ctx.ellipse(legGeom.shoeLX, legGeom.shoeY + 2, 10, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(legGeom.shoeRX, legGeom.shoeY + 2, 10, 6, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // ---- Arms ----
