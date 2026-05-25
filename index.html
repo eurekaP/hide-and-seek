@@ -369,18 +369,23 @@
     const elapsed = (performance.now() - startTime) / 1000;
     return Math.floor(elapsed / CYCLE_SECONDS + 0.35);
   }
+  // Deterministic per-day hash — stable within a day, unpredictable across days
+  function hashDay(day, salt) {
+    let h = ((day + 1) * 2654435761) ^ (salt * 374761393);
+    h = Math.imul(h ^ (h >>> 15), 1597334677);
+    h = Math.imul(h ^ (h >>> 13), 2246822519);
+    h = h ^ (h >>> 16);
+    return (h >>> 0);
+  }
   function currentDress() {
-    const i = ((dayIndex() % DRESS_PALETTE.length) + DRESS_PALETTE.length) % DRESS_PALETTE.length;
-    return DRESS_PALETTE[i];
+    return DRESS_PALETTE[hashDay(dayIndex(), 1) % DRESS_PALETTE.length];
   }
 
   const OUTFIT_TYPES = [
     'bell', 'gown', 'sundress', 'tee-skirt', 'overalls', 'shorts-tank', 'polka', 'sailor',
   ];
   function currentOutfitType() {
-    // Offset by 3 so the outfit cycle doesn't perfectly track the color cycle
-    const i = ((dayIndex() + 3) % OUTFIT_TYPES.length + OUTFIT_TYPES.length) % OUTFIT_TYPES.length;
-    return OUTFIT_TYPES[i];
+    return OUTFIT_TYPES[hashDay(dayIndex(), 2) % OUTFIT_TYPES.length];
   }
 
   // -------- Weather --------
@@ -997,6 +1002,18 @@
 
     // Skin legs (base layer; pants will overlay this for some outfits)
     strokeLegPath(SKIN, 11);
+
+    // ---- Torso skin (drawn before outfit so any uncovered chest/shoulders show skin, not background) ----
+    ctx.fillStyle = SKIN;
+    ctx.beginPath();
+    ctx.moveTo(cx - 6, neckY);
+    ctx.quadraticCurveTo(cx - 20, shoulderY - 2, cx - 22, shoulderY + 6);
+    ctx.quadraticCurveTo(cx - 24, waistY, cx - 22, waistY + 2);
+    ctx.lineTo(cx + 22, waistY + 2);
+    ctx.quadraticCurveTo(cx + 24, waistY, cx + 22, shoulderY + 6);
+    ctx.quadraticCurveTo(cx + 20, shoulderY - 2, cx + 6, neckY);
+    ctx.closePath();
+    ctx.fill();
 
     // ---- Outfit ----
     const outfit = currentOutfitType();
